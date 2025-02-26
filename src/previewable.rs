@@ -1,6 +1,14 @@
-use super::Preview;
-use std::fs::DirEntry;
-use crate::fs::dir_entry_ext::retrieve_fileext;
+use std::{fs::DirEntry, io::Bytes};
+
+pub enum PreviewType {
+    Text,
+    Image,
+}
+pub struct Preview<R> {
+    content: Bytes<R>,
+    path: DirEntry,
+    r#type: PreviewType,
+}
 
 /// Defines and implements the PossiblyPreviewable trait, representing a file that can potentially
 /// be simplified or condensed into a smaller, limited size representation of the file. The maximum
@@ -18,35 +26,24 @@ use crate::fs::dir_entry_ext::retrieve_fileext;
 /// These limited representations will then be fed into Fetch's preview-to-semantic neural network
 /// in order to generate semantic representations of the previews, which will be indexed and then
 /// utilized to find semantically related files to a given input query.
-pub trait PossiblyPreviewable {
-    fn can_preview(&self) -> bool;
-    fn preview(&self) -> Option<Preview>; // possibly this might need to be Result<Ok, Err>. need to reevaluate later.
+pub trait PossiblyPreviewable<R> {
+    fn preview(&self) -> Result<Option<Preview<R>>, &str>;
 }
 
-impl PossiblyPreviewable for DirEntry {
-    fn can_preview(&self) -> bool {
+impl<R> PossiblyPreviewable<R> for DirEntry {
+    fn preview(&self) -> Result<Option<Preview<R>>, &str> {
         let extension;
-        match retrieve_fileext(self) {
+        match retrieve_file_ext(self) {
             Ok(ext) => extension = ext,
-            Err(_) => return false,
-        }
-
-        os_preview_generator::has_generator_for_type(&extension) || default_preview_generator::has_generator_for_type(&extension)
-    }
-
-    fn preview(&self) -> Option<Preview> {
-        let extension;
-        match retrieve_fileext(self) {
-            Ok(ext) => extension = ext,
-            Err(_) => return None,
+            Err(e) => return Err(e),
         }
 
         if os_preview_generator::has_generator_for_type(&extension) {
-            os_preview_generator::generate_preview(&self)
+            os_preview_generator::generate_preview(&self).map(|p| Some(p))
         } else if default_preview_generator::has_generator_for_type(&extension) {
-            default_preview_generator::generate_preview(&self)
+            default_preview_generator::generate_preview(&self).map(|p| Some())
         } else {
-            None
+            Ok(None)
         }
     }
 }
@@ -55,3 +52,14 @@ impl PossiblyPreviewable for DirEntry {
 
 mod os_preview_generator;
 mod default_preview_generator;
+
+/// Returns the file extension from the filename for a directory entry if it exists
+/// Can return an empty string "" (if the file does not have an extension)
+/// 
+/// Errors if the file extension cannot be decoded into utf8 properly
+pub fn retrieve_file_ext(entry: &DirEntry) -> Result<String, &'static str> {
+    match entry.path().extension() {
+        Some(os_str) => os_str.to_owned().into_string().map_err(|_err| "Utf8 encoding error with file extension"),
+        None => Ok(String::from("")), // if the file has no extension
+    }
+}

@@ -1,6 +1,5 @@
-mod preview;
+mod previewable;
 mod storage;
-mod fs;
 
 use std::fs::File;
 use std::error::Error;

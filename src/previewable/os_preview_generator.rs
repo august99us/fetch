@@ -1,6 +1,6 @@
 use std::fs::DirEntry;
 
-use crate::preview::Preview;
+use super::Preview;
 
 pub fn has_generator_for_type(extension: &str) -> bool {
     let os_generator: Option<Box<dyn OsPreviewGenerator>> = None;
@@ -11,13 +11,13 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub fn generate_preview(entry: &DirEntry) -> Option<Preview> {
+pub fn generate_preview(entry: &DirEntry) -> Result<Preview<R>, &str> {
     todo!()
 }
 
 trait OsPreviewGenerator {
     fn has_generator_for_type(&self, extension: &str) -> bool;
-    fn generate_preview(&self, entry: &DirEntry) -> Option<Preview>;
+    fn generate_preview(&self, entry: &DirEntry) -> Result<Preview<R>, &str>;
 }
 
 struct WindowsPreviewGenerator;
@@ -26,7 +26,7 @@ impl OsPreviewGenerator for WindowsPreviewGenerator {
         todo!()
     }
 
-    fn generate_preview(&self, entry: &DirEntry) -> Option<Preview> {
+    fn generate_preview(&self, entry: &DirEntry) -> Option<Preview<R>> {
         todo!()
     }
 }

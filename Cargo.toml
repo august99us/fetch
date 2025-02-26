@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arrow = "53.2"
+arrow-array = "53.2"
+arrow-schema = "53.2"
+lancedb = { version = "0.16.0", features = ["openai"] }
