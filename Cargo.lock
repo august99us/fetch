@@ -1825,8 +1825,14 @@ dependencies = [
  "arrow",
  "arrow-array",
  "arrow-schema",
+ "fetch-translation",
+ "futures",
  "lancedb",
 ]
+
+[[package]]
+name = "fetch-translation"
+version = "0.1.0"
 
 [[package]]
 name = "fixedbitset"

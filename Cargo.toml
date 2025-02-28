@@ -7,4 +7,6 @@ edition = "2021"
 arrow = "53.2"
 arrow-array = "53.2"
 arrow-schema = "53.2"
+fetch-translation = { path = "../fetch-translation" }
+futures = "0.3.31"
 lancedb = { version = "0.16.0", features = ["openai"] }

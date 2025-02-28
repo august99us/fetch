@@ -1,11 +1,11 @@
 use std::fs::DirEntry;
 
-use super::Preview;
+use crate::Preview;
 
 pub fn has_generator_for_type(extension: &str) -> bool {
     todo!()
 }
 
-pub fn generate_preview(entry: &DirEntry) -> Result<Preview, &str> {
+pub fn generate_preview<R>(entry: &DirEntry) -> Result<Preview<R>, &str> {
     todo!()
 }

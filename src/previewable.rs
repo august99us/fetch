@@ -1,14 +1,6 @@
-use std::{fs::DirEntry, io::Bytes};
+use std::fs::DirEntry;
 
-pub enum PreviewType {
-    Text,
-    Image,
-}
-pub struct Preview<R> {
-    content: Bytes<R>,
-    path: DirEntry,
-    r#type: PreviewType,
-}
+use crate::Preview;
 
 /// Defines and implements the PossiblyPreviewable trait, representing a file that can potentially
 /// be simplified or condensed into a smaller, limited size representation of the file. The maximum
@@ -30,6 +22,8 @@ pub trait PossiblyPreviewable<R> {
     fn preview(&self) -> Result<Option<Preview<R>>, &str>;
 }
 
+// TODO: REPLACE ERROR TYPES
+
 impl<R> PossiblyPreviewable<R> for DirEntry {
     fn preview(&self) -> Result<Option<Preview<R>>, &str> {
         let extension;
@@ -41,7 +35,7 @@ impl<R> PossiblyPreviewable<R> for DirEntry {
         if os_preview_generator::has_generator_for_type(&extension) {
             os_preview_generator::generate_preview(&self).map(|p| Some(p))
         } else if default_preview_generator::has_generator_for_type(&extension) {
-            default_preview_generator::generate_preview(&self).map(|p| Some())
+            default_preview_generator::generate_preview(&self).map(|p| Some(p))
         } else {
             Ok(None)
         }
@@ -57,7 +51,7 @@ mod default_preview_generator;
 /// Can return an empty string "" (if the file does not have an extension)
 /// 
 /// Errors if the file extension cannot be decoded into utf8 properly
-pub fn retrieve_file_ext(entry: &DirEntry) -> Result<String, &'static str> {
+fn retrieve_file_ext(entry: &DirEntry) -> Result<String, &'static str> {
     match entry.path().extension() {
         Some(os_str) => os_str.to_owned().into_string().map_err(|_err| "Utf8 encoding error with file extension"),
         None => Ok(String::from("")), // if the file has no extension
