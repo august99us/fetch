@@ -1,9 +1,9 @@
-use std::fs::DirEntry;
+use std::path::Path;
 
 use crate::Preview;
 
 pub fn has_generator_for_type(extension: &str) -> bool {
-    let os_generator: Option<Box<dyn OsPreviewGenerator<_>>> = None;
+    let os_generator: Option<Box<dyn ImpliesGeneratingPreview>> = None;
 
     #[cfg(target_os = "windows")]
     let os_generator = Some(Box::new(WindowsPreviewGenerator));
@@ -11,22 +11,25 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub fn generate_preview<R>(entry: &DirEntry) -> Result<Preview<R>, &str> {
+pub fn generate_preview<R>(entry: &Path) -> Result<Preview<R>, String> {
     todo!()
 }
 
-trait OsPreviewGenerator<R> {
+trait ImpliesGeneratingPreview {
     fn has_generator_for_type(&self, extension: &str) -> bool;
-    fn generate_preview(&self, entry: &DirEntry) -> Result<Preview<R>, &str>;
+}
+trait GeneratesPreview<R> {
+    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, String>;
 }
 
 struct WindowsPreviewGenerator;
-impl<R> OsPreviewGenerator<R> for WindowsPreviewGenerator {
+impl ImpliesGeneratingPreview for WindowsPreviewGenerator {
     fn has_generator_for_type(&self, extension: &str) -> bool {
-        todo!()
+        false
     }
-
-    fn generate_preview(&self, entry: &DirEntry) -> Result<Preview<R>, &str> {
-        todo!()
+}
+impl<R> GeneratesPreview<R> for WindowsPreviewGenerator {
+    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, String> {
+        Err("not implemented".to_owned())
     }
 }

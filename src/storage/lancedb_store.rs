@@ -4,13 +4,14 @@ use arrow::datatypes::Float32Type;
 use arrow_array::{FixedSizeListArray, RecordBatch, RecordBatchIterator, StringArray, TimestampMillisecondArray};
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use futures::stream::StreamExt;
-use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase, Select}, Error, Table};
+use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase, Select}, Connection, Error, Table};
 
 use crate::{embeddable::Embeddable, Preview};
 
 use super::{IndexPreview, QuerySimilarFiles};
 
 pub struct LanceDBStore {
+    db: Connection,
     table: Table,
 }
 
@@ -23,8 +24,14 @@ impl LanceDBStore {
             .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
             .execute().await?;
         Ok(LanceDBStore {
+            db,
             table,
         })
+    }
+
+    pub async fn clear(&self) -> Result<(), Error> {
+        self.db.drop_all_tables().await?;
+        Ok(())
     }
 }
 
@@ -66,7 +73,7 @@ impl IndexPreview for LanceDBStore {
 }
 
 impl QuerySimilarFiles for LanceDBStore {
-     fn query(&self, file_description: &str) -> impl Future<Output = Result<Vec<String>, String>> {
+    fn query(&self, file_description: &str) -> impl Future<Output = Result<Vec<String>, String>> {
         self.query_n(file_description, 15)
     }
 
@@ -94,7 +101,7 @@ impl QuerySimilarFiles for LanceDBStore {
 
 // Private functions
 
-const VECTOR_LEN: i32 = 1000;
+const VECTOR_LEN: i32 = 512;
 
 fn schema() -> Arc<Schema> {
     static SCHEMA: OnceLock<Arc<Schema>> = OnceLock::new();

@@ -1,4 +1,4 @@
-use std::fs::DirEntry;
+use std::{io::Read, path::Path};
 
 use crate::Preview;
 
@@ -18,14 +18,14 @@ use crate::Preview;
 /// These limited representations will then be fed into Fetch's preview-to-semantic neural network
 /// in order to generate semantic representations of the previews, which will be indexed and then
 /// utilized to find semantically related files to a given input query.
-pub trait PossiblyPreviewable<R> {
-    fn preview(&self) -> Result<Option<Preview<R>>, &str>;
+pub trait PossiblyPreviewable {
+    fn preview(&self) -> Result<Option<Preview<impl Read>>, String>;
 }
 
 // TODO: REPLACE ERROR TYPES
 
-impl<R> PossiblyPreviewable<R> for DirEntry {
-    fn preview(&self) -> Result<Option<Preview<R>>, &str> {
+impl PossiblyPreviewable for Path {
+    fn preview(&self) -> Result<Option<Preview<impl Read>>, String> {
         let extension;
         match retrieve_file_ext(self) {
             Ok(ext) => extension = ext,
@@ -33,9 +33,9 @@ impl<R> PossiblyPreviewable<R> for DirEntry {
         }
 
         if os_preview_generator::has_generator_for_type(&extension) {
-            os_preview_generator::generate_preview(&self).map(|p| Some(p))
+            os_preview_generator::generate_preview(self).map(|p| Some(p))
         } else if default_preview_generator::has_generator_for_type(&extension) {
-            default_preview_generator::generate_preview(&self).map(|p| Some(p))
+            default_preview_generator::generate_preview(self).map(|p| Some(p))
         } else {
             Ok(None)
         }
@@ -51,9 +51,9 @@ mod default_preview_generator;
 /// Can return an empty string "" (if the file does not have an extension)
 /// 
 /// Errors if the file extension cannot be decoded into utf8 properly
-fn retrieve_file_ext(entry: &DirEntry) -> Result<String, &'static str> {
-    match entry.path().extension() {
-        Some(os_str) => os_str.to_owned().into_string().map_err(|_err| "Utf8 encoding error with file extension"),
+fn retrieve_file_ext(entry: &Path) -> Result<String, String> {
+    match entry.extension() {
+        Some(os_str) => os_str.to_owned().into_string().map_err(|_err| "Utf8 encoding error with file extension".to_owned()),
         None => Ok(String::from("")), // if the file has no extension
     }
 }

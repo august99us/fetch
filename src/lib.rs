@@ -16,37 +16,6 @@ pub struct Preview<R> {
     r#type: PreviewType,
 }
 
-mod embeddable;
-mod previewable;
-mod storage;
-
-pub trait Indexer {
-    // TODO: replace Box<dyn Error>
-    fn index_file(&self, file: &File) -> Result<(), Box<dyn Error>>;
-    fn index_files(&self, files: Vec<&File>) -> Result<(), Box<dyn Error>>;
-}
-
-pub struct SequentialIndexer {
-    translators: HashMap<File, Translator>,
-    semantic_store: VectorStore,
-}
-impl SequentialIndexer {
-    pub fn new(translators, semantic_store) -> SequentialIndexer {
-        SequentialIndexer {
-            translators,
-            semantic_store,
-        }
-    }
-}
-impl Indexer for SequentialIndexer {
-    fn index_file(&self, file: &File) -> Result<(), Box<dyn Error>> {
-        Ok(())
-    }
-    fn index_files(&self, files: Vec<&File>) -> Result<(), Box<dyn Error>> {
-        Ok(())
-    }
-}
-
-pub fn DefaultSequentialIndexer() -> SequentialIndexer {
-    SequentialIndexer::new()
-}
+pub mod embeddable;
+pub mod previewable;
+pub mod storage;
