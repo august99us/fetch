@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path, time::SystemTime};
+use std::{error::Error, fs::File, io::Read, path::Path, time::SystemTime};
 
 use crate::Preview;
 
@@ -9,8 +9,8 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     }
 }
 
-pub fn generate_preview(entry: &Path) -> Result<Preview<File>, String> {
-    let file = File::open(entry).map_err(|e| e.to_string())?;
+pub fn generate_preview(entry: &Path) -> Result<Preview<File>, Box<dyn Error>> {
+    let file = File::open(entry)?;
 
     Ok(Preview {
         content: file.bytes(),

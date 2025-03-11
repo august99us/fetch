@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{error::Error, path::Path};
 
 use crate::Preview;
 
@@ -11,7 +11,7 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub fn generate_preview<R>(entry: &Path) -> Result<Preview<R>, String> {
+pub fn generate_preview<R>(entry: &Path) -> Result<Preview<R>, Box<dyn Error>> {
     todo!()
 }
 
@@ -19,7 +19,7 @@ trait ImpliesGeneratingPreview {
     fn has_generator_for_type(&self, extension: &str) -> bool;
 }
 trait GeneratesPreview<R> {
-    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, String>;
+    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, Box<dyn Error>>;
 }
 
 struct WindowsPreviewGenerator;
@@ -29,7 +29,7 @@ impl ImpliesGeneratingPreview for WindowsPreviewGenerator {
     }
 }
 impl<R> GeneratesPreview<R> for WindowsPreviewGenerator {
-    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, String> {
-        Err("not implemented".to_owned())
+    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, Box<dyn Error>> {
+        todo!()
     }
 }

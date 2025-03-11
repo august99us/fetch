@@ -11,4 +11,5 @@ embed_anything = "0.5.1"
 fetch-translation = { path = "../fetch-translation" }
 futures = "0.3.31"
 lancedb = { version = "0.16.0", features = ["openai"] }
+thiserror = "2.0.12"
 tokio = "1.44.0"
