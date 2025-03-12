@@ -16,4 +16,4 @@ pub struct Preview<R> {
 
 pub mod embeddable;
 pub mod previewable;
-pub mod storage;
+pub mod index;

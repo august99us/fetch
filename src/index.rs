@@ -2,7 +2,10 @@ use std::{error::Error, io::Read};
 
 use crate::Preview;
 
-// TODO REPLACE ERROR TYPES
+pub enum StorageError {
+
+}
+
 /// index
 pub trait IndexPreview {
     async fn index<R: Read>(&self, preview: Preview<R>) -> Result<(), Box<dyn Error>>;
