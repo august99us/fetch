@@ -1,12 +1,13 @@
-use std::{error::Error, path::Path};
+use std::error::Error;
+use camino::Utf8Path;
 use embed_anything::embeddings::embed::Embedder;
-use fetch::{previewable::PossiblyPreviewable, index::{lancedb_store::LanceDBStore, IndexPreview, QuerySimilarFiles}};
+use fetch::{previewable::PossiblyPreviewable, semantic_index::{lancedb_store::LanceDBStore, IndexPreview, QuerySimilarFiles}};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("hi");
-    let file = Path::new("test.jpg");
-    let preview = file.preview()?.unwrap();
+    let file = Utf8Path::new("test.jpg");
+    let preview = file.preview().await?.unwrap();
 
     let embedder = Embedder::from_pretrained_hf("clip", "openai/clip-vit-base-patch32", None).unwrap();
 

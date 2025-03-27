@@ -1,6 +1,6 @@
-use std::{error::Error, io::Read, sync::Arc};
+use std::error::Error;
 
-use embed_anything::embeddings::{embed::{EmbedImage, Embedder}, local::clip::ClipEmbedder};
+use embed_anything::embeddings::embed::{EmbedImage, Embedder};
 
 use crate::{Preview, PreviewType};
 
@@ -28,16 +28,17 @@ pub trait Embeddable {
     async fn calculate_embedding(&self, embedder: &Embedder) -> Result<Vec<f32>, Box<dyn Error>>;
 }
 
-// Considering the API is tied to embed_anything is this error still useful?
+// Considering the API is already tied to embed_anything is this error still useful?
 pub enum EmbeddingError {
 
 }
 
-impl<R: Read> Embeddable for Preview<R> {
+impl<'a> Embeddable for Preview<'a> {
     async fn calculate_embedding(&self, embedder: &Embedder) -> Result<Vec<f32>, Box<dyn Error>> {
         match self.r#type {
             PreviewType::Image => {
-                // TODO: make this implementation more mature, both using a better model and better code, with error handling, etc.
+                // TODO: make this implementation more mature, both using a better model and better code,
+                // with error handling, etc.
                 let result = embedder.embed_image(&self.path, None)?;
                 Ok(result.embedding.to_dense().expect("expected dense vector returned from embedding model"))
             },

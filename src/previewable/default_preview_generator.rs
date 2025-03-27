@@ -1,6 +1,4 @@
-use std::{error::Error, fs::File, io::Read, path::Path, time::SystemTime};
-
-use crate::Preview;
+use std::{error::Error, fs::File, io::{Bytes, Read}};
 
 pub fn has_generator_for_type(extension: &str) -> bool {
     match extension {
@@ -9,14 +7,6 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     }
 }
 
-pub fn generate_preview(entry: &Path) -> Result<Preview<File>, Box<dyn Error>> {
-    let file = File::open(entry)?;
-
-    Ok(Preview {
-        content: file.bytes(),
-        // todo: error handling
-        path: entry.to_str().unwrap().to_owned(),
-        timestamp: SystemTime::now(),
-        r#type: crate::PreviewType::Image,
-    })
+pub fn generate_preview(file: File) -> Result<Bytes<File>, Box<dyn Error>> {
+    Ok(file.bytes())
 }

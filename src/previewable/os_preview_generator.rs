@@ -1,6 +1,4 @@
-use std::{error::Error, path::Path};
-
-use crate::Preview;
+use std::{error::Error, fs::File, io::{Bytes, Read}};
 
 pub fn has_generator_for_type(extension: &str) -> bool {
     let os_generator: Option<Box<dyn ImpliesGeneratingPreview>> = None;
@@ -11,15 +9,15 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub fn generate_preview<R>(entry: &Path) -> Result<Preview<R>, Box<dyn Error>> {
-    todo!()
+pub fn generate_preview(file: File) -> Result<Bytes<File>, Box<dyn Error>> {
+    Ok(file.bytes())
 }
 
 trait ImpliesGeneratingPreview {
     fn has_generator_for_type(&self, extension: &str) -> bool;
 }
-trait GeneratesPreview<R> {
-    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, Box<dyn Error>>;
+trait GeneratesPreview {
+    fn generate_preview(&self, file: File) -> Result<Bytes<File>, Box<dyn Error>>;
 }
 
 struct WindowsPreviewGenerator;
@@ -28,8 +26,8 @@ impl ImpliesGeneratingPreview for WindowsPreviewGenerator {
         false
     }
 }
-impl<R> GeneratesPreview<R> for WindowsPreviewGenerator {
-    fn generate_preview(&self, entry: &Path) -> Result<Preview<R>, Box<dyn Error>> {
-        todo!()
+impl GeneratesPreview for WindowsPreviewGenerator {
+    fn generate_preview(&self, file: File) -> Result<Bytes<File>, Box<dyn Error>> {
+        Ok(file.bytes())
     }
 }
