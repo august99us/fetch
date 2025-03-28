@@ -2,7 +2,7 @@ use std::error::Error;
 
 use embed_anything::embeddings::embed::{EmbedImage, Embedder};
 
-use crate::{Preview, PreviewType};
+use crate::{PreviewedFile, PreviewType};
 
 /// Adds the embeddable trait, signifying that a struct or object has data that it can use to
 /// create an embedding.
@@ -33,13 +33,13 @@ pub enum EmbeddingError {
 
 }
 
-impl<'a> Embeddable for Preview<'a> {
+impl<'a> Embeddable for PreviewedFile<'a> {
     async fn calculate_embedding(&self, embedder: &Embedder) -> Result<Vec<f32>, Box<dyn Error>> {
         match self.r#type {
             PreviewType::Image => {
                 // TODO: make this implementation more mature, both using a better model and better code,
                 // with error handling, etc.
-                let result = embedder.embed_image(&self.path, None)?;
+                let result = embedder.embed_image(&self.preview_path, None)?;
                 Ok(result.embedding.to_dense().expect("expected dense vector returned from embedding model"))
             },
             _ => todo!(),

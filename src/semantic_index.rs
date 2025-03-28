@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::Preview;
+use crate::PreviewedFile;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SemanticIndexError {
@@ -16,7 +16,7 @@ pub enum SemanticIndexError {
 
 /// index
 pub trait IndexPreview {
-    async fn index(&self, preview: Preview) -> Result<(), SemanticIndexError>;
+    async fn index(&self, preview: PreviewedFile) -> Result<(), SemanticIndexError>;
     async fn delete(&self, path: &str) -> Result<(), SemanticIndexError>;
 }
 

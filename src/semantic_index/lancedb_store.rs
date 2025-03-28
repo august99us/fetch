@@ -6,7 +6,7 @@ use embed_anything::embeddings::embed::Embedder;
 use futures::stream::StreamExt;
 use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase, Select}, Connection, Table};
 
-use crate::{embeddable::Embeddable, Preview};
+use crate::{embeddable::Embeddable, PreviewedFile};
 
 use super::{IndexPreview, QuerySimilarFiles, SemanticIndexError};
 
@@ -86,15 +86,15 @@ impl LanceDBStore {
 }
 
 impl IndexPreview for LanceDBStore {
-    async fn index<'a>(&self, preview: Preview<'a>) -> Result<(), SemanticIndexError> {
-        let embedding = preview.calculate_embedding(&self.embedder).await
-            .map_err(|e| SemanticIndexError::PreviewEmbedding { record_key: preview.original_file_path.to_string(), source: e })?;
+    async fn index<'a>(&self, previewed_file: PreviewedFile<'a>) -> Result<(), SemanticIndexError> {
+        let embedding = previewed_file.calculate_embedding(&self.embedder).await
+            .map_err(|e| SemanticIndexError::PreviewEmbedding { record_key: previewed_file.path.to_string(), source: e })?;
         let batches = RecordBatchIterator::new(
             vec![RecordBatch::try_new(
                 self.schema(),
                 vec![
                     // hash key column
-                    Arc::new(StringArray::from_iter_values(vec![&preview.original_file_path])),
+                    Arc::new(StringArray::from_iter_values(vec![&previewed_file.path])),
                     // --------------------
                     // value column (the vector calculated from embedding)
                     Arc::new(
@@ -106,11 +106,11 @@ impl IndexPreview for LanceDBStore {
                         // Expect: the embedding vector should convert without error because the length of the
                         // embedding vector is hard coded into the program as of now.
                         ).unwrap_or_else(|e| panic!("Error creating FixedSizeListArray from embedding for file \
-                            path {:?}\nError was: {:?}", preview.path.to_string(), e))
+                            path {:?}\nError was: {:?}", previewed_file.path.to_string(), e))
                     ),
                     // --------------------
                     // timestamp column
-                    Arc::new(TimestampMillisecondArray::from_iter_values(vec![i64::try_from(preview.timestamp
+                    Arc::new(TimestampMillisecondArray::from_iter_values(vec![i64::try_from(previewed_file.timestamp
                         .duration_since(SystemTime::UNIX_EPOCH).expect("time before epoch").as_millis())
                         // not expected to happen for millions of years
                         .expect("millis since unix epoch over i64 max")]))
@@ -129,7 +129,7 @@ impl IndexPreview for LanceDBStore {
             .when_not_matched_insert_all();
 
         merge.execute(Box::new(batches)).await
-            .map_err(|e| SemanticIndexError::RecordOperation { record_key: preview.path.to_string(), 
+            .map_err(|e| SemanticIndexError::RecordOperation { record_key: previewed_file.path.to_string(), 
                 operation: "Merge insert on record", source: Box::new(e) })?;
 
         Ok(())

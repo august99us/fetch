@@ -1,4 +1,5 @@
-use std::error::Error;
+use std::ops::Deref;
+use std::{error::Error, fmt};
 use std::time::SystemTime;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -12,10 +13,9 @@ pub enum PreviewType {
     Text,
     Image,
 }
-pub struct Preview<'a> {
-    // The naming of these member variables can make 
-    path: Utf8PathBuf,
-    original_file_path: &'a Utf8Path,
+pub struct PreviewedFile<'a> {
+    path: &'a Utf8Path,
+    preview_path: Utf8PathBuf,
     timestamp: SystemTime,
     r#type: PreviewType,
 }
@@ -25,20 +25,42 @@ pub struct FileIndexer<I: IndexPreview + QuerySimilarFiles> {
 }
 
 // Perhaps this needs to be a struct so path can be a common variable amongst all variants?
-pub enum FileIndexingResult<'a> {
-    Indexed{ path: &'a Utf8Path },
-    Cleared{ path: &'a Utf8Path },
+pub enum FileIndexingResultType {
+    Indexed,
+    Cleared,
+}
+pub struct FileIndexingResult<'a> {
+    pub path: &'a Utf8Path,
+    pub r#type: FileIndexingResultType,
 }
 
 // Perhaps this needs to be a struct so path can be a common variable amongst all variants?
-#[derive(thiserror::Error, Debug)]
-pub enum FileIndexingError<'a> {
-    #[error("Unhandled error while generating or accessing preview for file path {path:?}")]
-    Preview { path: &'a Utf8Path, #[source] source: Box<dyn Error> },
-    #[error("Error creating or updating index for file path {path:?}")]
-    Index { path: &'a Utf8Path, #[source] source: Box<dyn Error> },
-    #[error("Error clearing index for empty file path {path:?}")]
-    Clear { path: &'a Utf8Path, #[source] source: Box<dyn Error> },
+#[derive(Debug)]
+pub struct FileIndexingError {
+    pub path: String,
+    pub source: Box<dyn Error>,
+    pub r#type: FileIndexingErrorType,
+}
+#[derive(Debug)]
+pub enum FileIndexingErrorType {
+    Preview,
+    Index,
+    Clear,
+}
+impl fmt::Display for FileIndexingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.r#type {
+            FileIndexingErrorType::Preview => write!(f, "Unhandled error while generating or accessing \
+                preview for file path {:?}", self.path),
+            FileIndexingErrorType::Index => write!(f, "Error creating or updating index for file path {:?}", self.path),
+            FileIndexingErrorType::Clear => write!(f, "Error clearing index for empty file path {:?}", self.path),
+        }
+    }
+}
+impl Error for FileIndexingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&*self.source)
+    }
 }
 
 impl<I: IndexPreview + QuerySimilarFiles> FileIndexer<I> {
@@ -46,29 +68,34 @@ impl<I: IndexPreview + QuerySimilarFiles> FileIndexer<I> {
         FileIndexer { semantic_index: index }
     }
 
-    pub async fn process_file<'a>(&self, file_path: &'a Utf8Path) -> Result<FileIndexingResult<'a>, FileIndexingError<'a>> {
+    pub async fn process_file<'a>(&self, file_path: &'a Utf8Path) -> Result<FileIndexingResult<'a>, FileIndexingError> {
         let preview_result = file_path.preview().await;
 
         match preview_result {
             Ok(Some(p)) => { 
+                // Preview successful
                 match self.semantic_index.index(p).await {
-                    Ok(()) => Ok(FileIndexingResult::Indexed{ path: file_path }),
-                    Err(e) => Err(FileIndexingError::Index { path: file_path, source: Box::new(e) }),
+                    Ok(()) => Ok(FileIndexingResult { path: file_path, r#type: FileIndexingResultType::Indexed }),
+                    Err(e) => Err(FileIndexingError { path: file_path.to_string(), source: Box::new(e),
+                        r#type: FileIndexingErrorType::Index }),
                 }
             },
             Err(PreviewError::NotFound {..}) | Ok(None) => {
+                // File not found or preview type not registered with preview system
                 match self.semantic_index.delete(file_path.as_str()).await {
-                    Ok(()) => Ok(FileIndexingResult::Cleared{ path: file_path }),
-                    Err(e) => Err(FileIndexingError::Clear { path: file_path, source: Box::new(e) }),
+                    Ok(()) => Ok(FileIndexingResult { path: file_path, r#type: FileIndexingResultType::Cleared }),
+                    Err(e) => Err(FileIndexingError { path: file_path.to_string(), source: Box::new(e),
+                        r#type: FileIndexingErrorType::Clear }),
                 }
             },
             Err(e) => {
-                Err(FileIndexingError::Preview { path: file_path, source: Box::new(e) })
+                // Preview unable to be generated due to an error
+                Err(FileIndexingError { path: file_path.to_string(), source: Box::new(e), r#type: FileIndexingErrorType::Preview })
             },
         }
     }
 
-    pub async fn process_files<'a>(&self, file_paths: Vec<&'a Utf8Path>) -> Vec<Result<FileIndexingResult<'a>, FileIndexingError<'a>>> {
+    pub async fn process_files<'a>(&self, file_paths: Vec<&'a Utf8Path>) -> Vec<Result<FileIndexingResult<'a>, FileIndexingError>> {
         let process_futures: Vec<_> = file_paths.iter().map(|f| self.process_file(f)).collect();
         join_all(process_futures).await
     }

@@ -2,7 +2,7 @@ use std::{fs::File, time::SystemTime};
 
 use camino::Utf8Path;
 
-use crate::Preview;
+use crate::PreviewedFile;
 
 /// Defines and implements the PossiblyPreviewable trait, representing a file that can potentially
 /// be simplified or condensed into a smaller, limited size representation of the file. The maximum
@@ -21,7 +21,7 @@ use crate::Preview;
 /// in order to generate semantic representations of the previews, which will be indexed and then
 /// utilized to find semantically related files to a given input query.
 pub trait PossiblyPreviewable {
-    async fn preview(&self) -> Result<Option<Preview>, PreviewError>;
+    async fn preview(&self) -> Result<Option<PreviewedFile>, PreviewError>;
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -35,7 +35,7 @@ pub enum PreviewError {
 }
 
 impl PossiblyPreviewable for Utf8Path {
-    async fn preview(&self) -> Result<Option<Preview>, PreviewError> {
+    async fn preview(&self) -> Result<Option<PreviewedFile>, PreviewError> {
         let extension = self.extension().unwrap_or("");
         let file = File::open(self).map_err(|e| -> PreviewError {
             match e.kind() {
@@ -56,9 +56,9 @@ impl PossiblyPreviewable for Utf8Path {
         }
 
         // TODO: actually use the content returned by the preview_generator
-        Ok(preview_content.map(|c| Preview {
-            path: self.to_path_buf(),
-            original_file_path: self,
+        Ok(preview_content.map(|c| PreviewedFile {
+            path: self,
+            preview_path: self.to_path_buf(),
             timestamp: SystemTime::now(),
             r#type: crate::PreviewType::Image,
         }))

@@ -3,7 +3,7 @@ use std::{error::Error, path::{self, PathBuf}};
 use camino::Utf8PathBuf;
 use clap::Parser;
 use embed_anything::embeddings::embed::Embedder;
-use fetch::{semantic_index::lancedb_store::LanceDBStore, FileIndexer, FileIndexingResult};
+use fetch::{semantic_index::lancedb_store::LanceDBStore, FileIndexer, FileIndexingResult, FileIndexingResultType};
 use normalize_path::NormalizePath;
 
 #[derive(Parser, Debug)]
@@ -44,15 +44,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     for result in results {
         match result {
-            Ok(FileIndexingResult::Indexed { path }) => println!("File {path:?} successfully indexed"),
-            Ok(FileIndexingResult::Cleared { path }) => println!("File {path:?} not found or could not be previewed, \
-                successfully cleared from index"),
-            Err(e) => println!("Error while processing file "), // todo
+            Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Indexed }) => println!("File {path:?} \
+                successfully indexed"),
+            Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => println!("File {path:?} \
+                not found or could not be previewed, successfully cleared from index"),
+            Err(e) => println!("Error while processing file with path {:?}: {:?}", e.path, e.source()),
         }
     }
-
-    println!("{:?}", args.verbose);
-    println!("{:?}", file_paths);
 
     Ok(())
 }

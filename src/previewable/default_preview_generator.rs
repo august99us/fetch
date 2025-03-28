@@ -3,6 +3,7 @@ use std::{error::Error, fs::File, io::{Bytes, Read}};
 pub fn has_generator_for_type(extension: &str) -> bool {
     match extension {
         "jpg" => true,
+        "png" => true,
         _ => false,
     }
 }

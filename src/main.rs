@@ -1,24 +1,15 @@
 use std::error::Error;
-use camino::Utf8Path;
 use embed_anything::embeddings::embed::Embedder;
-use fetch::{previewable::PossiblyPreviewable, semantic_index::{lancedb_store::LanceDBStore, IndexPreview, QuerySimilarFiles}};
+use fetch::semantic_index::{lancedb_store::LanceDBStore, QuerySimilarFiles};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("hi");
-    let file = Utf8Path::new("test.jpg");
-    let preview = file.preview().await?.unwrap();
-
     let embedder = Embedder::from_pretrained_hf("clip", "openai/clip-vit-base-patch32", None).unwrap();
 
-    let mut lancedbstore = LanceDBStore::new("./data_dir", embedder, 512).await?;
+    let lancedbstore = LanceDBStore::new("./data_dir", embedder, 512).await?;
 
-    let delete_result = lancedbstore.clear().await;
-    println!("the result of the clear operation {:?}", delete_result);
-
-    lancedbstore.index(preview).await?;
-
-    let results = lancedbstore.query("dog").await?;
+    let results = lancedbstore.query_n("the thinker", 3).await?;
 
     println!("{:?}", results);
 
