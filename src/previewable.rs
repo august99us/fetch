@@ -1,8 +1,17 @@
 use std::{fs::File, time::SystemTime};
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::PreviewedFile;
+pub enum PreviewType {
+    Text,
+    Image,
+}
+pub struct PreviewedFile<'a> {
+    pub path: &'a Utf8Path,
+    pub preview_path: Utf8PathBuf,
+    pub timestamp: SystemTime,
+    pub r#type: PreviewType,
+}
 
 /// Defines and implements the PossiblyPreviewable trait, representing a file that can potentially
 /// be simplified or condensed into a smaller, limited size representation of the file. The maximum
@@ -60,7 +69,7 @@ impl PossiblyPreviewable for Utf8Path {
             path: self,
             preview_path: self.to_path_buf(),
             timestamp: SystemTime::now(),
-            r#type: crate::PreviewType::Image,
+            r#type: PreviewType::Image,
         }))
     }
 }

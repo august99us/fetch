@@ -3,11 +3,11 @@ use std::{error::Error, path::{self, PathBuf}};
 use camino::Utf8PathBuf;
 use clap::Parser;
 use embed_anything::embeddings::embed::Embedder;
-use fetch::{semantic_index::lancedb_store::LanceDBStore, FileIndexer, FileIndexingResult, FileIndexingResultType};
+use fetch::{file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 use normalize_path::NormalizePath;
 
 #[derive(Parser, Debug)]
-#[command(name = "fetch-indexer")]
+#[command(name = "fetch-index")]
 #[command(author = "August Sun, august99us@gmail.com")]
 #[command(version = "0.1")]
 #[command(about = "indexes things semantically", long_about = None)]
@@ -35,18 +35,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .collect::<Result<Vec<Utf8PathBuf>, PathBuf>>() // collect results
         .unwrap_or_else(|e| panic!("Error verifying utf8 validity of path: {:?}", e));
 
+    // TODO: unwrap error handling
     let embedder = Embedder::from_pretrained_hf("clip", "openai/clip-vit-base-patch32", None).unwrap();
 
-    let lancedbstore = LanceDBStore::new("./data_dir", embedder, 512).await?;
-    let semantic_indexer = FileIndexer::new(lancedbstore);
+    let lancedbstore = LanceDBStore::new("./data_dir", 512).await?;
+    // TODO: unwrap error handling
+    let file_indexer = FileIndexer::with(embedder, lancedbstore).unwrap();
 
-    let results = semantic_indexer.process_files(file_paths.iter().map(AsRef::as_ref).collect()).await;
+    let results = file_indexer.index_multiple(file_paths.iter().map(AsRef::as_ref).collect()).await;
 
     for result in results {
         match result {
-            Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Indexed }) => println!("File {path:?} \
+            Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Indexed }) => println!("File {path:?} \
                 successfully indexed"),
-            Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => println!("File {path:?} \
+            Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared  }) => println!("File {path:?} \
                 not found or could not be previewed, successfully cleared from index"),
             Err(e) => println!("Error while processing file with path {:?}: {:?}", e.path, e.source()),
         }
