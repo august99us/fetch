@@ -2,7 +2,6 @@ use std::{error::Error, path::{self, PathBuf}};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use embed_anything::embeddings::embed::Embedder;
 use fetch::{file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 use normalize_path::NormalizePath;
 
@@ -35,12 +34,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .collect::<Result<Vec<Utf8PathBuf>, PathBuf>>() // collect results
         .unwrap_or_else(|e| panic!("Error verifying utf8 validity of path: {:?}", e));
 
-    // TODO: unwrap error handling
-    let embedder = Embedder::from_pretrained_hf("clip", "openai/clip-vit-base-patch32", None).unwrap();
-
     let lancedbstore = LanceDBStore::new("./data_dir", 512).await?;
     // TODO: unwrap error handling
-    let file_indexer = FileIndexer::with(embedder, lancedbstore).unwrap();
+    let file_indexer = FileIndexer::with(lancedbstore).unwrap();
 
     let results = file_indexer.index_multiple(file_paths.iter().map(AsRef::as_ref).collect()).await;
 

@@ -1,7 +1,6 @@
 use std::{error::Error, future::Future, pin::Pin};
 
 use clap::Parser;
-use embed_anything::embeddings::embed::Embedder;
 use fetch::{file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 
 #[derive(Parser, Debug)]
@@ -24,15 +23,13 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    let embedder = Embedder::from_pretrained_hf("clip", "openai/clip-vit-base-patch32", None).unwrap();
-
     let lancedbstore = LanceDBStore::new("./data_dir", 512).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
-    let file_indexer = FileIndexer::with(embedder, lancedbstore)?;
+    let file_indexer = FileIndexer::with(lancedbstore)?;
 
     println!("Querying file index at ./data_dir with query: \"{}\"", args.query);
 
-    let result_future: Pin<Box<dyn Future<Output = Result<Vec<String>, FileQuerying::Error>>>>;
+    let result_future: Pin<Box<dyn Future<Output = Result<FileQuerying::Result, FileQuerying::Error>>>>;
     if let Some(n) = args.num_results {
         result_future = Box::pin(file_indexer.query_n(&args.query, n));
     } else {
@@ -47,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     } else {
         println!("Results ({}):", results.len().to_string());
         for (i, result) in results.iter().enumerate() {
-            println!("{i}: {result}");
+            println!("{i}: {}, {}", result.path, result.similarity);
         }
     }
 

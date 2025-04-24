@@ -3,7 +3,7 @@ use std::{future::Future, sync::{Arc, OnceLock}};
 use arrow_array::{Array, FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
 use futures::stream::StreamExt;
-use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase, Select}, Connection, Table};
+use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase, Select}, Connection, DistanceType, Table};
 
 use super::{IndexVector, QueryKeyResult, QueryVectorKeys, VectorStoreError};
 
@@ -64,13 +64,25 @@ impl LanceDBStore {
         })
     }
 
-    // development function to clear all the data from the semantic preview index table.
+    // development function to clear all the data from a given directory with LanceDB data inside
     pub async fn drop(data_dir: &str) -> Result<(), LanceDBError> {
         let db = connect(data_dir)
             .execute().await
             .map_err(|e| LanceDBError::Connection(e))?;
         db.drop_all_tables().await
             .map_err(|e| LanceDBError::TableOperation { operation: "Dropping all tables", source: e })?;
+        Ok(())
+    }
+    
+    // development function to clear all the data from an instantiated LanceDBStore
+    pub async fn clear(&mut self) -> Result<(), LanceDBError> {
+        self.db.drop_all_tables().await
+            .map_err(|e| LanceDBError::TableOperation { operation: "Dropping all tables", source: e })?;
+        let schema = build_schema(self.vector_len);
+        self.table = self.db.create_empty_table(table_name(), schema.clone())
+            .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
+            .execute().await
+            .map_err(|e| LanceDBError::TableOperation { operation: "Creating or opening table", source: e })?;
         Ok(())
     }
 
@@ -128,7 +140,7 @@ impl IndexVector for LanceDBStore {
     }
 
     async fn delete(&self, key: &str, optional_sequence_number: Option<u64>) -> Result<(), VectorStoreError> {
-        let mut delete_condition = format!("{} = {}", key_column_name(), key);
+        let mut delete_condition = format!("{} = '{}'", key_column_name(), key);
         if let Some(sn) = optional_sequence_number {
             delete_condition.push_str(&format!(" AND {} < {}", sequence_number_column_name(), sn));
         }
@@ -146,7 +158,7 @@ impl QueryVectorKeys for LanceDBStore {
         self.query_n_keys(vector, 15)
     }
 
-    async fn query_n_keys(&self, vector: Vec<f32>, num_files: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError> {
+    async fn query_n_keys(&self, vector: Vec<f32>, num_results: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError> {
         verify_valid_vector_len(self, &vector)?;
 
         let query = self.table.query()
@@ -155,10 +167,11 @@ impl QueryVectorKeys for LanceDBStore {
             // actual vector to be provided here for the query, which is what I have done. Therefore this should
             // theoretically never cause an issue.
             .nearest_to(vector).expect("Unexpected issue converting Vec<f32> to QueryVector")
+            .distance_type(DistanceType::Dot)
             .column(vector_column_name())
             .select(Select::Columns(vec![String::from(key_column_name())]))
             // u32 -> usize cast, should always be fine
-            .limit(num_files.try_into().unwrap());
+            .limit(num_results.try_into().unwrap());
         let mut result_stream = query.execute().await
             .map_err(|e| VectorStoreError::Query { source: Box::new(e) })?;
 

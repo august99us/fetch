@@ -24,7 +24,7 @@ impl<I: IndexVector + QueryVectorKeys> IndexFiles for FileIndexer<I> {
         match preview_result {
             Ok(Some(p)) => { 
                 // Preview successful
-                let embedded_vector = p.calculate_embedding(&self.embedder).await.map_err(|e| 
+                let embedded_vector = p.calculate_embedding().await.map_err(|e| 
                     FileIndexing::Error { path: path.to_string(), source: e, r#type: FileIndexing::ErrorType::Embedding})?;
                 let epoch_millis = p.timestamp.duration_since(SystemTime::UNIX_EPOCH)
                     .expect("timestamp is before linux epoch")

@@ -1,16 +1,14 @@
-use std::{error::Error, path::{self, PathBuf}};
+use std::error::Error;
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use embed_anything::embeddings::embed::Embedder;
-use fetch::{file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
-use normalize_path::NormalizePath;
+use fetch::vector_store::lancedb_store::LanceDBStore;
 
 #[derive(Parser, Debug)]
-#[command(name = "fetch-indexer")]
+#[command(name = "fetch-drop")]
 #[command(author = "August Sun, august99us@gmail.com")]
 #[command(version = "0.1")]
-#[command(about = "indexes things semantically", long_about = None)]
+#[command(about = "drops entire database (development use)", long_about = None)]
 struct Args {
     #[arg(short, long)]
     verbose: bool,
