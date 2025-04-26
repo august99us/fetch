@@ -134,7 +134,7 @@ impl IndexVector for LanceDBStore {
 
         merge.execute(Box::new(batches)).await
             .map_err(|e| VectorStoreError::RecordOperation { record_key: key.to_string(), 
-                operation: "Merge insert on record", source: Box::new(e) })?;
+                operation: "Merge insert on record", source: e.into() })?;
 
         Ok(())
     }
@@ -147,7 +147,7 @@ impl IndexVector for LanceDBStore {
 
         self.table.delete(&delete_condition).await
             .map_err(|e| VectorStoreError::RecordOperation { record_key: key.to_string(),
-                operation: "Delete record", source: Box::new(e) })?;
+                operation: "Delete record", source: e.into() })?;
         Ok(())
     }
 }
@@ -173,7 +173,7 @@ impl QueryVectorKeys for LanceDBStore {
             // u32 -> usize cast, should always be fine
             .limit(num_results.try_into().unwrap());
         let mut result_stream = query.execute().await
-            .map_err(|e| VectorStoreError::Query { source: Box::new(e) })?;
+            .map_err(|e| VectorStoreError::Query { source: e.into() })?;
 
         let mut result_list: Vec<QueryKeyResult> = Vec::new();
         while let Some(rb) = result_stream.next().await {
@@ -210,7 +210,7 @@ impl QueryVectorKeys for LanceDBStore {
                         result_list.push(QueryKeyResult { key, distance: *distance_column.get(i).unwrap() });
                     }
                 }
-                Err(e) => return Err(VectorStoreError::Query { source: Box::new(e) })
+                Err(e) => return Err(VectorStoreError::Query { source: e.into() })
             }
         }
         Ok(result_list)

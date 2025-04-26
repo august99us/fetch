@@ -1,4 +1,4 @@
-use std::{error::Error, sync::OnceLock};
+use std::sync::OnceLock;
 
 use candle_core::{DType, Device, Tensor, D};
 use candle_nn::VarBuilder;
@@ -28,30 +28,46 @@ use crate::previewable::{PreviewType, PreviewedFile};
 pub trait Embeddable {
     /// Calculates the embedding for the presented data in the objects using the Embedder passed in the
     /// arguments. Embedder model should support both image and text embeddings.
-    async fn calculate_embedding(&self) -> Result<Vec<f32>, Box<dyn Error>>;
+    async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError>;
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum EmbeddingError {
+    #[error("Error during intialization of model and tokenizer for embedding")]
+    Initialization (#[source] anyhow::Error),
+    #[error("Error interacting with file")]
+    IO { path: String, #[source] source: anyhow::Error },
+    #[error("Error while performing neural network calculations with file")]
+    Calculation { element: String, step: &'static str, #[source] source: anyhow::Error },
+    #[error("Error while tokenizing query in preparation for embedding")]
+    Tokenizing { query: String, #[source] source: anyhow::Error },
     #[error("Error")]
-    Unknown { msg: &'static str, #[source] source: Box<dyn Error> },
+    Unknown { msg: &'static str, #[source] source: anyhow::Error },
 }
 
 impl Embeddable for PreviewedFile<'_> {
-    async fn calculate_embedding(&self) -> Result<Vec<f32>, Box<dyn Error>> {
+    async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         match self.r#type {
             PreviewType::Image => {
                 // TODO: make this implementation more mature, both using a better model and better code,
                 // with error handling, etc.
-                let (model, _tokenizer) = get_model_and_tokenizer()?;
-                let image = load_image(&self.preview_path, 224)?; // MUST be 224 or the tensor math for the model doesn't work out i think?
+                let (model, _tokenizer) = get_model_and_tokenizer()
+                    .map_err(|e| EmbeddingError::Initialization(e))?;
+                let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
+                    // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
+                    .map_err(|e| EmbeddingError::IO { path: self.preview_path.to_string(), source: e })?;
                 let mut images = vec![];
                 images.push(image);
-                let images = Tensor::stack(&images, 0)?;
+                let images = Tensor::stack(&images, 0)
+                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Preparing pixel values", source: e.into() })?;
 
-                let embedding = model.get_image_features(&images)?;
-                let embedding = div_l2_norm(&embedding)?;
-                let vector = embedding.to_vec2::<f32>()?.swap_remove(0);
+                let embedding = model.get_image_features(&images)
+                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Performing clip transformation", source: e.into() })?;
+                let embedding = div_l2_norm(&embedding)
+                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Normalizing result vector", source: e })?;
+                let vector = embedding.to_vec2::<f32>()
+                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Remapping to vec2", source: e.into() })?
+                    .swap_remove(0);
                 Ok(vector)
             },
             _ => todo!(),
@@ -60,21 +76,30 @@ impl Embeddable for PreviewedFile<'_> {
 }
 
 impl Embeddable for &str {
-    async fn calculate_embedding(&self) -> Result<Vec<f32>, Box<dyn Error>> {
-        let (model, tokenizer) = get_model_and_tokenizer()?;
+    async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
+        let (model, tokenizer) = get_model_and_tokenizer()
+            .map_err(|e| EmbeddingError::Initialization(e))?;
 
-        let encoding = tokenizer.encode(*self, true).map_err(|e| EmbeddingError::Unknown { msg: "sth", source: e })?;
-        let tokens = Tensor::new(encoding.get_ids().to_vec(), device())?.unsqueeze(0)?;
+        let encoding = tokenizer.encode(*self, true)
+            .map_err(|e| EmbeddingError::Tokenizing { query: self.to_string(), source: anyhow::Error::from_boxed(e) })?;
+        let tokens = Tensor::new(encoding.get_ids().to_vec(), device())
+                .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Creating token tensor", source: e.into() })?
+                .unsqueeze(0)
+                .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Expanding token tensor", source: e.into() })?;
 
-        let embedding = model.get_text_features(&tokens)?;
-        let embedding = div_l2_norm(&embedding)?;
-        let vector = embedding.to_vec2::<f32>()?.swap_remove(0);
+        let embedding = model.get_text_features(&tokens)
+            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Performing clip transformation", source: e.into() })?;
+        let embedding = div_l2_norm(&embedding)
+            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Normalizing result vector", source: e.into() })?;
+        let vector = embedding.to_vec2::<f32>()
+            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Remapping to vec2", source: e.into() })?
+            .swap_remove(0);
         Ok(vector)
     }
 }
 
 // TODO Modularize model code and refactor into a separate package (fetch-translation?)
-fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), Box<dyn Error>> {
+fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), anyhow::Error> {
     let device = device();
 
     let api = hf_hub::api::sync::Api::new()?;
@@ -89,11 +114,11 @@ fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), Box<dyn Error>> {
 
     let config = ClipConfig::vit_base_patch32();
     let model = ClipModel::new(vb, &config)?;
-    let tokenizer = Tokenizer::from_file(tokenizer_file).map_err(|e| EmbeddingError::Unknown { msg: "sth", source: e })?;
+    let tokenizer = Tokenizer::from_file(tokenizer_file).map_err(anyhow::Error::msg)?;
     Ok((model, tokenizer))
 }
 
-fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<Tensor, Box<dyn Error>> {
+fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<Tensor, anyhow::Error> {
     let device = device();
 
     let img = image::ImageReader::open(path)?.decode()?;
@@ -112,7 +137,7 @@ fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<T
     Ok(img)
 }
 
-pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, Box<dyn Error>> {
+pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, anyhow::Error> {
     let l2_norm = v.sqr()?.sum_keepdim(D::Minus1)?.sqrt()?;
     Ok(v.broadcast_div(&l2_norm).map_err(|e| Box::new(e))?)
 }

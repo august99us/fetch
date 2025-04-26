@@ -6,7 +6,7 @@ use std::{error::Error, fmt};
 #[derive(Debug)]
 pub struct FileQueryingError {
     pub query: String,
-    pub source: Box<dyn Error>,
+    pub source: anyhow::Error,
     pub r#type: FileQueryingErrorType,
 }
 #[derive(Debug)]

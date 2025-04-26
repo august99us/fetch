@@ -12,6 +12,13 @@ struct Args {
     #[arg(short, long)]
     /// Verbose mode
     verbose: bool,
+    #[arg(short, long)]
+    /// Number of parallel indexing jobs to run at once
+    jobs: Option<usize>,
+    #[arg(short, long)]
+    recursive: bool,
+    #[arg(short, long)]
+    force: bool,
     /// String to query files with
     query: String,
     /// The number of query results to return, default 15
@@ -44,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     } else {
         println!("Results ({}):", results.len().to_string());
         for (i, result) in results.iter().enumerate() {
-            println!("{i}: {}, {}", result.path, result.similarity);
+            println!("{}: {}, {}", i + 1, result.path, result.similarity);
         }
     }
 

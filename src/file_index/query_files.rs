@@ -9,7 +9,7 @@ pub trait QueryFiles {
     async fn query_n(&self, file_description: &str, num_results: u32) -> Result<FileQuerying::Result, FileQuerying::Error>;
 }
 
-impl<I: IndexVector + QueryVectorKeys> QueryFiles for FileIndexer<I> {
+impl<I: IndexVector + QueryVectorKeys + Send + Sync> QueryFiles for FileIndexer<I> {
     // Query 15 by default
     fn query(&self, file_description: &str) -> impl Future<Output = Result<FileQuerying::Result, FileQuerying::Error>> {
         self.query_n(file_description, 15)
@@ -17,12 +17,12 @@ impl<I: IndexVector + QueryVectorKeys> QueryFiles for FileIndexer<I> {
 
     async fn query_n(&self, file_description: &str, num_results: u32) -> Result<FileQuerying::Result, FileQuerying::Error> {
         let query_vector = file_description.calculate_embedding().await.map_err(|e| 
-            FileQuerying::Error { query: file_description.to_string(), source: e, r#type: FileQuerying::ErrorType::Embedding })?;
+            FileQuerying::Error { query: file_description.to_string(), source: e.into(), r#type: FileQuerying::ErrorType::Embedding })?;
 
         match self.vector_store.query_n_keys(query_vector, num_results).await {
             Ok(list) => Ok(FileQuerying::Result::from(list)),
             Err(e) => Err(FileQuerying::Error {query: file_description.to_string(), 
-                source: Box::new(e), r#type: FileQuerying::ErrorType::Query }),
+                source: e.into(), r#type: FileQuerying::ErrorType::Query }),
         }
     }
 }
