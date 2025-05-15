@@ -4,6 +4,7 @@ use candle_core::{DType, Device, Tensor, D};
 use candle_nn::VarBuilder;
 use candle_transformers::models::clip::{ClipConfig, ClipModel};
 use tokenizers::Tokenizer;
+use tokio_retry::RetryIf;
 
 use crate::previewable::{PreviewType, PreviewedFile};
 
@@ -51,7 +52,7 @@ impl Embeddable for PreviewedFile<'_> {
             PreviewType::Image => {
                 // TODO: make this implementation more mature, both using a better model and better code,
                 // with error handling, etc.
-                let (model, _tokenizer) = get_model_and_tokenizer()
+                let (model, _tokenizer) = get_model_and_tokenizer().await
                     .map_err(|e| EmbeddingError::Initialization(e))?;
                 let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
                     // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
@@ -77,7 +78,7 @@ impl Embeddable for PreviewedFile<'_> {
 
 impl Embeddable for &str {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
-        let (model, tokenizer) = get_model_and_tokenizer()
+        let (model, tokenizer) = get_model_and_tokenizer().await
             .map_err(|e| EmbeddingError::Initialization(e))?;
 
         let encoding = tokenizer.encode(*self, true)
@@ -99,21 +100,39 @@ impl Embeddable for &str {
 }
 
 // TODO Modularize model code and refactor into a separate package (fetch-translation?)
-fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), anyhow::Error> {
+async fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), anyhow::Error> {
     let device = device();
 
-    let api = hf_hub::api::sync::Api::new()?;
+    let api = hf_hub::api::tokio::Api::new()?;
     let api = api.repo(hf_hub::Repo::new(
         "openai/clip-vit-base-patch32".to_string(),
         hf_hub::RepoType::Model,
     ));
-    let model_file = api.get("pytorch_model.bin")?;
-    let tokenizer_file = api.get("tokenizer.json")?;
+
+    let retry_strategy = tokio_retry::strategy::ExponentialBackoff::from_millis(30)
+        .factor(1000)
+        .map(tokio_retry::strategy::jitter)
+        .take(2);
+    let retry_condition = |err: &hf_hub::api::tokio::ApiError| {
+        match err {
+            hf_hub::api::tokio::ApiError::LockAcquisition(_) => {
+                eprintln!("File locked while downloading model, probably means another thread is downloading. Retrying later...");
+                true
+            }
+            _ => false
+        }
+    };
+    let model_file = RetryIf::spawn(retry_strategy.clone(), || api.get("pytorch_model.bin"),
+        retry_condition).await?;
+    let tokenizer_file = RetryIf::spawn(retry_strategy.clone(), || api.get("tokenizer.json"),
+        retry_condition).await?;
 
     let vb = VarBuilder::from_pth(model_file, DType::F32, &device)?;
 
     let config = ClipConfig::vit_base_patch32();
+    // lock aquisition error handling?
     let model = ClipModel::new(vb, &config)?;
+    // lock aquisition error handling?
     let tokenizer = Tokenizer::from_file(tokenizer_file).map_err(anyhow::Error::msg)?;
     Ok((model, tokenizer))
 }

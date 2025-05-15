@@ -17,7 +17,7 @@ struct Args {
     #[arg(short, long)]
     verbose: bool,
     /// Number of parallel indexing jobs to run at once
-    #[arg(short, long, default_value_t = 10)]
+    #[arg(short, long, default_value_t = 4)]
     jobs: usize, // TODO
     /// Recursively look through sub folders to find files to index
     #[arg(short, long)]
@@ -184,7 +184,8 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
     bar.tick();
 
     for file in files {
-        let permit = semaphore.clone().acquire_owned().await.unwrap();
+        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e| 
+            panic!("Failed to acquire semaphore permit (was the semaphore closed?): {:?}", e));
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();
         let handle = task::spawn(async move {
@@ -212,7 +213,7 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
 
     let mut results = vec![];
     for handle in handles {
-        results.push(handle.await.unwrap());
+        results.push(handle.await.unwrap_or_else(|_e| Err(())));
     }
 
     bar.finish();

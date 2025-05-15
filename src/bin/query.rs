@@ -9,16 +9,9 @@ use fetch::{file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, 
 #[command(version = "0.1")]
 #[command(about = "queries semantic file index with a query string", long_about = None)]
 struct Args {
-    #[arg(short, long)]
     /// Verbose mode
+    #[arg(short, long)]
     verbose: bool,
-    #[arg(short, long)]
-    /// Number of parallel indexing jobs to run at once
-    jobs: Option<usize>,
-    #[arg(short, long)]
-    recursive: bool,
-    #[arg(short, long)]
-    force: bool,
     /// String to query files with
     query: String,
     /// The number of query results to return, default 15

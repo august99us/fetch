@@ -12,14 +12,20 @@ camino = "1.1.9"
 candle-core = { version = "0.9.0-alpha.4", features = ["cuda"], git = "https://github.com/huggingface/candle.git" }
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.0-alpha.4", features = ["cuda"] }
 candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.9.0-alpha.4", features = ["cuda"] }
+chrono = "0.4"
 clap = { version = "4.5.32", features = ["derive"] }
+config = "0.15.11"
 # fetch-translation = { path = "../fetch-translation" }
 futures = "0.3.31"
-hf-hub = "0.4.2"
+hf-hub = { version = "0.4.2", path = "../hf-hub" }
 image = "0.25.6"
 indicatif = "0.17.11"
 lancedb = { path = "../lancedb/rust/lancedb" }
 normalize-path = "0.2.1"
+notify = "8.0.0"
+notify-debouncer-full = "0.5.0"
 thiserror = "2.0.12"
 tokenizers = "0.21.1"
-tokio = "1.44.0"
+tokio = { version = "1.44.0", features = ["sync"] }
+tokio-retry = "0.3.0"
+uuid = { version = "1.16.0", features = ["v4"] }
