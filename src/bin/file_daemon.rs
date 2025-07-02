@@ -1,50 +1,32 @@
 use std::time::Duration;
 
-use camino::Utf8PathBuf;
-use fetch::app_config;
+use camino::{Utf8Path, Utf8PathBuf};
+use chrono::Utc;
+use crossbeam_channel::{unbounded, Receiver};
+use fetch::{app_config, file_index::{index_files::IndexFiles, query_files::QueryFiles, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use notify::{event::{CreateKind, DataChange, ModifyKind}, Event, EventKind, RecursiveMode};
-use notify_debouncer_full::{DebounceEventResult, DebouncedEvent};
-use tokio::{fs, sync::mpsc::unbounded_channel};
+use notify_debouncer_full::DebouncedEvent;
+use tokio::fs;
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> Result<(), ()>{
+    let worker_count = 4;
+
     // Create a channel to receive file change events
-    let (tx, rx) = unbounded_channel();
+    let (tx, rx) = unbounded();
 
     // Create a watcher object
-    let mut watcher_debouncer = notify_debouncer_full::new_debouncer(Duration::from_secs(2), None,
-        move |result: DebounceEventResult| {
-            match result {
-                Ok(events) => {
-                    let result = tx.send(events.into_iter().last().expect("Empty event list passed to debounce handler"));
-                    if result.is_err() {
-                        eprintln!("Failed to send event to channel: {:?}", result.err());
-                    }
-                },
-                Err(e) => eprintln!("Watcher/debouncer error(s): {:?}", e),
-            }
-        });
+    let watcher_debouncer = notify_debouncer_full::new_debouncer(Duration::from_secs(2), None, tx);
     if watcher_debouncer.is_err() {
         eprintln!("Failed to create watcher: {:?}", watcher_debouncer.err());
         return Err(());
     }
-    let watcher_debouncer = watcher_debouncer.unwrap();
+    let mut watcher_debouncer = watcher_debouncer.unwrap();
 
     // Read paths from configuration file
-    let config = app_config::get_daemon_config();
-    if config.is_err() {
-        eprintln!("Failed to load daemon config file: {:?}", config.err());
-        return Err(());
-    }
-    let config = config.unwrap();
-
-    // Get the file path of the daemon file watchlist from the config
-    let watchlist_file = config.get_string("daemon_watchlist_file").map(Utf8PathBuf::from);
-    if watchlist_file.is_err() {
-        eprintln!("Failed to get watchlist file from config: {:?}", watchlist_file.err());
-        return Err(());
-    }
-    let watchlist_file = watchlist_file.unwrap();
+    let watchlist_file = app_config::get_watchlist_file_path();
+    println!("Reading watchlist file from: {}", watchlist_file);
 
     // Read the watchlist file
     let watchlist = fs::read_to_string(watchlist_file).await;
@@ -59,43 +41,133 @@ async fn main() -> Result<(), ()>{
 
     // Add paths to be watched (recursive mode)
     for path in paths_to_watch {
+        let path = path.canonicalize_utf8()
+            .unwrap_or_else(|e| panic!("Failed to canonicalize path: {}, error: {}", path, e));
         watcher_debouncer.watch(path.as_std_path(), RecursiveMode::Recursive)
             .unwrap_or_else(|e| eprintln!("Failed to watch path: {}, error: {}", path, e));
     }
 
-    println!("File change tracking daemon is running...");
+    println!("File change tracking daemon is initiating workers...");
 
-    // Event loop to process file changes
-    loop {
-        match rx.recv().await {
-            Some(event) => match event {
-                DebouncedEvent { event: Event {
-                        paths,
-                        kind: EventKind::Create(CreateKind::File),
-                        attrs,
-                    }, time } => {
-                        println!(
-                            "File created: {} at time: {}",
-                            paths.last(),
-                            DateTime::Local::from(time).format("%Y-%m-%d %H:%M:%S")
-                        );
-                    }
-                },
-                DebouncedEvent { event: Event {
-                        paths,
-                        kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
-                        attrs,
-                    }, time } => {
-                        println!("File modified: {} at time: {}", paths.last(), time);
-                },
-                _ => println!("something"),
-            },
-            None => {
-                println!("Channel closed");
-                break;
-            },
-        }
+    let data_directory = app_config::get_default_data_directory();
+    let vector_store = LanceDBStore::new(data_directory.as_str(), 512).await
+        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
+    let file_indexer = FileIndexer::with(vector_store)
+        .unwrap_or_else(|e| panic!("Failed to create file indexer: {:?}", e));
+
+    let mut handles = Vec::with_capacity(worker_count);
+    let cancellation_token = CancellationToken::new();
+
+    for i in (0..worker_count).into_iter() {
+        println!("starting worker {}...", i);
+        let rx_clone = rx.clone();
+        let token_clone = cancellation_token.clone();
+        let file_indexer_clone = file_indexer.clone();
+        let handle = tokio::spawn(worker_main(rx_clone, file_indexer_clone, token_clone));
+
+        handles.push(handle);
+    }
+
+    match tokio::signal::ctrl_c().await {
+        Ok(_) => println!("Received Ctrl+C, shutting down..."),
+        Err(e) => eprintln!("Failed to listen for Ctrl+C: {:?}", e),
     }
 
     Ok(())
+}
+
+async fn worker_main<I: IndexFiles + QueryFiles>(rx: Receiver<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>, 
+    file_indexer: I, cancellation_token: CancellationToken) {
+    while let Ok(event_message) = rx.recv() {
+        if event_message.is_err() {
+            eprintln!("Worker received error: {:?}", event_message.err());
+            continue;
+        }
+        let events = event_message.unwrap();
+
+        for event in events {
+            handle_event(&file_indexer, event).await;
+        }
+    }
+}
+
+async fn handle_event<I: IndexFiles + QueryFiles>(file_indexer: &I, debounced_event: DebouncedEvent) {
+    match debounced_event.event.kind {
+        EventKind::Create(CreateKind::File) => {
+            let file_path = <&Utf8Path>::try_from(debounced_event.event.paths.get(0)
+                .expect("Expected at least one path for create file event")
+                .as_path())
+                .expect("Expected path to be valid UTF-8");
+            println!("File created: {}", file_path);
+
+            // index file
+            let result = file_indexer.index(file_path).await;
+            match result {
+                Ok(_) => println!("File indexed successfully: {}", file_path),
+                Err(e) => eprintln!("Error indexing file {}: {:?}", file_path, e),
+            }
+        },
+        EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
+            let file_path = <&Utf8Path>::try_from(debounced_event.event.paths.get(0)
+                .expect("Expected at least one path for modify data event")
+                .as_path())
+                .expect("Expected path to be valid UTF-8");
+            println!("File modified: {:?}", file_path);
+
+            // re-index file
+            let result = file_indexer.index(file_path).await;
+            match result {
+                Ok(_) => println!("File updated successfully: {}", file_path),
+                Err(e) => eprintln!("Error indexing file {}: {:?}", file_path, e),
+            }
+        },
+        EventKind::Modify(ModifyKind::Name(rename_mode)) => {
+            println!("File renamed: {:?} with mode: {:?}", debounced_event.event.paths, rename_mode);
+            let first_file_path = <&Utf8Path>::try_from(debounced_event.event.paths.get(0)
+                .expect("Expected at least one path for modify name event")
+                .as_path())
+                .expect("Expected path to be valid UTF-8");
+            let second_file_path = debounced_event.event.paths.get(1)
+                .map(|p| <&Utf8Path>::try_from(p.as_path()).expect("Expected path to be valid UTF-8"));
+            if second_file_path.is_some() {
+                println!("Two paths found. File renamed: {:?} to {:?}", first_file_path, second_file_path.unwrap());
+                let clear_future = file_indexer.clear(first_file_path);
+                let index_future = file_indexer.index(second_file_path.unwrap());
+                match clear_future.await {
+                    Ok(_) => println!("File cleared from index: {}", first_file_path),
+                    Err(e) => eprintln!("Error clearing file {}: {:?}", first_file_path, e),
+                }
+                match index_future.await {
+                    Ok(_) => println!("File indexed successfully: {:?}", second_file_path.unwrap()),
+                    Err(e) => eprintln!("Error indexing file {}: {:?}", second_file_path.unwrap(), e),
+                }
+            } else {
+                println!("File renamed: {:?}. Unknown whether this is the 'to' or 'from' name.", first_file_path);
+                let result = file_indexer.index(first_file_path).await;
+                match result {
+                    Ok(_) => println!("File updated successfully (could be delete): {}", first_file_path),
+                    Err(e) => eprintln!("Error indexing file {}: {:?}", first_file_path, e),
+                }
+            }
+        },
+        EventKind::Remove(_) => {
+            let file_path = <&Utf8Path>::try_from(debounced_event.event.paths.get(0)
+                .expect("Expected at least one path for delete file event")
+                .as_path())
+                .expect("Expected path to be valid UTF-8");
+            println!("File removed: {:?}", file_path);
+
+            let result = file_indexer.clear(file_path).await;
+            match result {
+                Ok(_) => println!("File cleared from index: {}", file_path),
+                Err(e) => eprintln!("Error clearing file {}: {:?}", file_path, e),
+            }
+        },
+        EventKind::Access(_) => {
+            println!("File(s) accessed: {:?}, ignoring", debounced_event.event.paths);
+        },
+        _ => {
+            eprintln!("Unhandled event kind: {:?}", debounced_event.event.kind);
+        },
+    }
 }

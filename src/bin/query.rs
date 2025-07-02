@@ -1,7 +1,7 @@
 use std::{error::Error, future::Future, pin::Pin};
 
 use clap::Parser;
-use fetch::{file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch::{app_config, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]
@@ -23,11 +23,12 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    let lancedbstore = LanceDBStore::new("./data_dir", 512).await
-        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
+    let data_dir = app_config::get_default_data_directory();
+    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await
+        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
     let file_indexer = FileIndexer::with(lancedbstore)?;
 
-    println!("Querying file index at ./data_dir with query: \"{}\"", args.query);
+    println!("Querying file index at {} with query: \"{}\"", data_dir.as_str(), args.query);
 
     let result_future: Pin<Box<dyn Future<Output = Result<FileQuerying::Result, FileQuerying::Error>>>>;
     if let Some(n) = args.num_results {

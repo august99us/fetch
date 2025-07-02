@@ -1349,9 +1349,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.14"
+version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06ba6d68e24814cb8de6bb986db8222d3a027d15872cabc0d18817bc3c0e4471"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -2037,7 +2037,16 @@ version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
 dependencies = [
- "dirs-sys",
+ "dirs-sys 0.4.1",
+]
+
+[[package]]
+name = "dirs"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+dependencies = [
+ "dirs-sys 0.5.0",
 ]
 
 [[package]]
@@ -2048,8 +2057,20 @@ checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
 dependencies = [
  "libc",
  "option-ext",
- "redox_users",
+ "redox_users 0.4.6",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users 0.5.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2249,6 +2270,8 @@ dependencies = [
  "chrono",
  "clap",
  "config",
+ "crossbeam-channel",
+ "dirs 6.0.0",
  "futures",
  "hf-hub",
  "image",
@@ -2261,6 +2284,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tokio-retry",
+ "tokio-util",
  "uuid",
 ]
 
@@ -2895,7 +2919,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hf-hub"
 version = "0.4.2"
 dependencies = [
- "dirs",
+ "dirs 5.0.1",
  "futures",
  "http 1.2.0",
  "indicatif",
@@ -3775,7 +3799,7 @@ dependencies = [
  "datafusion-physical-expr",
  "datafusion-sql",
  "deepsize",
- "dirs",
+ "dirs 5.0.1",
  "fst",
  "futures",
  "half",
@@ -4403,6 +4427,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fee8403b3d66ac7b26aee6e40a897d85dc5ce26f44da36b8b73e987cc52e943"
 dependencies = [
  "bitflags 2.8.0",
+ "crossbeam-channel",
  "filetime",
  "fsevent-sys",
  "inotify",
@@ -4421,6 +4446,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2d88b1a7538054351c8258338df7c931a590513fb3745e8c15eb9ff4199b8d1"
 dependencies = [
+ "crossbeam-channel",
  "file-id",
  "log",
  "notify",
@@ -5434,6 +5460,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_users"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd6f9d3d47bdd2ad6945c5015a226ec6155d0bcdfd8f7cd29f86b71f8de99d2b"
+dependencies = [
+ "getrandom 0.2.15",
+ "libredox",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "regex"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5964,7 +6001,7 @@ version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da03fa3b94cc19e3ebfc88c4229c49d8f08cdbd1228870a45f0ffdf84988e14b"
 dependencies = [
- "dirs",
+ "dirs 5.0.1",
 ]
 
 [[package]]
@@ -6669,9 +6706,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.13"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
+checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
 dependencies = [
  "bytes",
  "futures-core",

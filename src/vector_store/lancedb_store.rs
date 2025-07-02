@@ -12,6 +12,13 @@ use super::{IndexVector, QueryKeyResult, QueryVectorKeys, VectorStoreError};
 /// Provides the IndexPreview and QuerySimilarFiles traits through that LanceDB backend.
 /// 
 /// Instantiate this 
+
+const TABLE_NAME: &str = "vector_index";
+const KEY_COLUMN: &str = "key";
+const VECTOR_COLUMN: &str = "vector";
+const SEQUENCE_NUMBER_COLUMN: &str = "sequence_number";
+
+#[derive(Clone)]
 pub struct LanceDBStore {
     db: Connection,
     table: Table,
@@ -51,7 +58,7 @@ impl LanceDBStore {
             .execute().await
             .map_err(|e| LanceDBError::Connection(e))?;
         let schema = build_schema(vector_len);
-        let table = db.create_empty_table(table_name(), schema.clone())
+        let table = db.create_empty_table(TABLE_NAME, schema.clone())
             .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
             .execute().await
             .map_err(|e| LanceDBError::TableOperation { operation: "Creating or opening table", source: e })?;
@@ -79,7 +86,7 @@ impl LanceDBStore {
         self.db.drop_all_tables().await
             .map_err(|e| LanceDBError::TableOperation { operation: "Dropping all tables", source: e })?;
         let schema = build_schema(self.vector_len);
-        self.table = self.db.create_empty_table(table_name(), schema.clone())
+        self.table = self.db.create_empty_table(TABLE_NAME, schema.clone())
             .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
             .execute().await
             .map_err(|e| LanceDBError::TableOperation { operation: "Creating or opening table", source: e })?;
@@ -128,9 +135,9 @@ impl IndexVector for LanceDBStore {
             self.schema(),
         );
 
-        let mut merge = self.table.merge_insert(&[key_column_name()]);
-        merge.when_matched_update_all(Some(format!("target.{} < source.{}", sequence_number_column_name(), 
-            sequence_number_column_name()))).when_not_matched_insert_all();
+        let mut merge = self.table.merge_insert(&[KEY_COLUMN]);
+        merge.when_matched_update_all(Some(format!("target.{} < source.{}", SEQUENCE_NUMBER_COLUMN, 
+            SEQUENCE_NUMBER_COLUMN))).when_not_matched_insert_all();
 
         merge.execute(Box::new(batches)).await
             .map_err(|e| VectorStoreError::RecordOperation { record_key: key.to_string(), 
@@ -140,9 +147,9 @@ impl IndexVector for LanceDBStore {
     }
 
     async fn delete(&self, key: &str, optional_sequence_number: Option<u64>) -> Result<(), VectorStoreError> {
-        let mut delete_condition = format!("{} = '{}'", key_column_name(), key);
+        let mut delete_condition = format!("{} = '{}'", KEY_COLUMN, key);
         if let Some(sn) = optional_sequence_number {
-            delete_condition.push_str(&format!(" AND {} < {}", sequence_number_column_name(), sn));
+            delete_condition.push_str(&format!(" AND {} < {}", SEQUENCE_NUMBER_COLUMN, sn));
         }
 
         self.table.delete(&delete_condition).await
@@ -168,8 +175,8 @@ impl QueryVectorKeys for LanceDBStore {
             // theoretically never cause an issue.
             .nearest_to(vector).expect("Unexpected issue converting Vec<f32> to QueryVector")
             .distance_type(DistanceType::Dot)
-            .column(vector_column_name())
-            .select(Select::Columns(vec![String::from(key_column_name())]))
+            .column(VECTOR_COLUMN)
+            .select(Select::Columns(vec![String::from(KEY_COLUMN)]))
             // u32 -> usize cast, should always be fine
             .limit(num_results.try_into().unwrap());
         let mut result_stream = query.execute().await
@@ -179,7 +186,7 @@ impl QueryVectorKeys for LanceDBStore {
         while let Some(rb) = result_stream.next().await {
             match rb {
                 Ok(batch) => {
-                    let string_column = batch.column_by_name(key_column_name()) // Pick out the key column
+                    let string_column = batch.column_by_name(KEY_COLUMN) // Pick out the key column
                         .expect("key column should exist in vector query")
                         // cast to a string array
                         .as_any().downcast_ref::<StringArray>()
@@ -238,12 +245,12 @@ fn build_schema(vector_len: u32) -> Arc<Schema> {
         // dropping table is probably not too expensive considering this application is only meant to be used
         // for personal purposes
         Field::new(
-            key_column_name(),
+            KEY_COLUMN,
             DataType::Utf8,
             false,
         ),
         Field::new(
-            vector_column_name(),
+            VECTOR_COLUMN,
             // have not been able to make this work as non-nullable. no matter what I put when inserting records,
             // lancedb somehow always ends up assuming the records are nullable while the schema is not.
             // if I then change this fixed size list data type to accept null but dont also change the produced records,
@@ -255,26 +262,9 @@ fn build_schema(vector_len: u32) -> Arc<Schema> {
             false,
         ),
         Field::new(
-            sequence_number_column_name(),
+            SEQUENCE_NUMBER_COLUMN,
             DataType::UInt64,
             false,
         ),
     ]))
-}
-
-fn table_name() -> &'static str {
-    static TABLE_NAME: OnceLock<&str> = OnceLock::new();
-    TABLE_NAME.get_or_init(|| "vector_index")
-}
-fn key_column_name() -> &'static str {
-    static KEY: OnceLock<&str> = OnceLock::new();
-    KEY.get_or_init(|| "key")
-}
-fn vector_column_name() -> &'static str {
-    static VECTOR: OnceLock<&str> = OnceLock::new();
-    VECTOR.get_or_init(|| "vector")
-}
-fn sequence_number_column_name() -> &'static str {
-    static SEQUENCE_NUMBER: OnceLock<&str> = OnceLock::new();
-    SEQUENCE_NUMBER.get_or_init(|| "sequence_number")
 }

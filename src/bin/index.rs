@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let lancedbstore = LanceDBStore::new("./data_dir", 512).await?;
     // TODO: unwrap error handling
-    let file_indexer = Arc::new(FileIndexer::with(lancedbstore).unwrap());
+    let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore).unwrap());
     let files = files.into_iter().map(Arc::new).collect();
 
     let results = spawn_index_jobs(file_indexer, files, args.jobs).await;
@@ -174,7 +174,7 @@ fn explore_directories(folders: Vec<PathBuf>, files: &mut Vec<PathBuf>, recursiv
     }
 }
 
-async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + 'static>>, 
+async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + Clone + 'static>>, 
     files: Vec<Arc<Utf8PathBuf>>, jobs: usize) -> Vec<Result<(), ()>> {
     let semaphore = Arc::new(Semaphore::new(jobs));
     let mut handles = vec![];

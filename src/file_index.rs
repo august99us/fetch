@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fs::File};
 
 use crate::vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys};
 
@@ -10,17 +10,20 @@ pub enum FileIndexerError {
     DependencyError { dependency: &'static str, #[source] source: Box<dyn Error> },
 }
 
-pub struct FileIndexer<I: IndexVector + QueryVectorKeys + Send + Sync> {
+#[derive(Clone)]
+pub struct FileIndexer<I: IndexVector + QueryVectorKeys> {
     vector_store: I,
 }
-impl<I: IndexVector + QueryVectorKeys + Send + Sync> FileIndexer<I> {
-    pub async fn new() -> Result<FileIndexer<impl IndexVector + QueryVectorKeys>, FileIndexerError> {
-        let lancedbstore = LanceDBStore::new("./data_dir", 512).await.map_err(|e| 
-            FileIndexerError::DependencyError { dependency: "Lance Db Vector Store", source: Box::new(e) })?;
+impl<I: IndexVector + QueryVectorKeys> FileIndexer<I> {
+    // Testing constructor
+    async fn new() -> Result<FileIndexer<LanceDBStore>, FileIndexerError> {
+        let lancedbstore = LanceDBStore::new("./data_dir", 512).await
+            .map_err(|e| FileIndexerError::DependencyError { dependency: "Lance Db Vector Store", 
+                source: Box::new(e) })?;
 
         FileIndexer::with(lancedbstore)
     }
-    pub fn with(vector_store: I) -> Result<FileIndexer<impl IndexVector + QueryVectorKeys + Send + Sync>, FileIndexerError> {
+    pub fn with(vector_store: I) -> Result<FileIndexer<I>, FileIndexerError> {
         Ok(FileIndexer { vector_store })
     }
 }
