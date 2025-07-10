@@ -4,11 +4,13 @@ A human application interface aiming to provide the ability to interact with mac
 
 ## Quick Start
 
+No distributable binaries setup as of yet. Gotta build from source.
+
 1. Install rust, cargo and other rust dependencies: `https://rustup.rs/`
 2. Clone the repository: `git clone https://github.com/august99us/fetch.git`
 3. `cd fetch`
 4. `cargo update` just in case
-5. `cargo build`
+5. `cargo build` (will probably have build issues to fix)
 6. binaries should be ready, either in target/debug or by running `cargo run --bin <binary_name> -- <args>`
 
 <ins>Currently Available Binaries</ins>
