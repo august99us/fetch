@@ -12,7 +12,7 @@ static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_pa
 pub fn get_default_data_directory() -> Utf8PathBuf {
     let data_config = get_data_config().expect("Failed to load data config");
 
-    Utf8PathBuf::from(data_config.get_string("default_table_directory")
+    Utf8PathBuf::from(data_config.get_string("default_index_directory")
         .expect("Failed to get default table directory from data config")
         .replace("%%AppDataDirectory%%", get_app_folder().as_str()))
 }
