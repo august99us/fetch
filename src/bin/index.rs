@@ -2,7 +2,7 @@ use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, 
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch::{file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
+use fetch::{app_config, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{sync::Semaphore, task};
@@ -18,11 +18,11 @@ struct Args {
     verbose: bool,
     /// Number of parallel indexing jobs to run at once
     #[arg(short, long, default_value_t = 4)]
-    jobs: usize, // TODO
+    jobs: usize,
     /// Recursively look through sub folders to find files to index
     #[arg(short, long)]
     recursive: bool,
-    /// Do not ask before indexing
+    /// Do not confirm before indexing
     #[arg(short, long)]
     force: bool,
     /// File or folder paths to index
@@ -67,14 +67,17 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("{} files discovered and queued for indexing.", files.len());
     }
 
-    let lancedbstore = LanceDBStore::new("./data_dir", 512).await?;
+    let data_dir = app_config::get_default_data_directory();
+    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
     // TODO: unwrap error handling
     let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore).unwrap());
     let files = files.into_iter().map(Arc::new).collect();
 
+    println!("Indexing files into index stored in the directory {}", data_dir.as_str());
+
     let results = spawn_index_jobs(file_indexer, files, args.jobs).await;
 
-    // run necessary processing for the "unknown" vector, the list of paths that are not files or directories or do not exist
+    // TODO: run necessary processing for the "unknown" vector, the list of paths that are not files or directories or do not exist
 
     let mut success = 0;
     let mut fail = 0;

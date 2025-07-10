@@ -1,10 +1,9 @@
 use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::Utc;
 use crossbeam_channel::{unbounded, Receiver};
 use fetch::{app_config, file_index::{index_files::IndexFiles, query_files::QueryFiles, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
-use notify::{event::{CreateKind, DataChange, ModifyKind}, Event, EventKind, RecursiveMode};
+use notify::{event::{CreateKind, DataChange, ModifyKind}, EventKind, RecursiveMode};
 use notify_debouncer_full::DebouncedEvent;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;

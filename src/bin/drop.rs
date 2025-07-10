@@ -10,8 +10,11 @@ use fetch::vector_store::lancedb_store::LanceDBStore;
 #[command(version = "0.1")]
 #[command(about = "drops entire database (development use)", long_about = None)]
 struct Args {
+    // Does nothing currently
     #[arg(short, long)]
     verbose: bool,
+    // Directory where index is stored
+    #[arg(long)]
     data_directory: Utf8PathBuf,
 }
 

@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.98", features = ["backtrace"] }
-arrow = "54.1"
-arrow-array = "54.1"
-arrow-schema = "54.1"
+arrow = "55.1"
+arrow-array = "55.1"
+arrow-schema = "55.1"
 camino = "1.1.9"
 candle-core = { version = "0.9.0-alpha.4", features = ["cuda"], git = "https://github.com/huggingface/candle.git" }
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.0-alpha.4", features = ["cuda"] }
@@ -19,10 +19,10 @@ crossbeam-channel = "0.5.15"
 dirs = "6.0.0"
 # fetch-translation = { path = "../fetch-translation" }
 futures = "0.3.31"
-hf-hub = { version = "0.4.2", path = "../hf-hub" }
+hf-hub = { version = "0.4" }
 image = "0.25.6"
 indicatif = "0.17.11"
-lancedb = { path = "../lancedb/rust/lancedb" }
+lancedb = { version = "0.21.1-beta.1", git = "https://github.com/lancedb/lancedb.git" }
 normalize-path = "0.2.1"
 notify = "8.0.0"
 notify-debouncer-full = { version = "0.5.0", features = ["crossbeam-channel"] }
