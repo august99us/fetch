@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let results = lancedbstore.query_n_keys(vector_query, 3).await.unwrap();
 
-    println!("{:?}", results);
+    println!("{results:?}");
 
     Ok(())
 }
@@ -45,5 +45,5 @@ fn get_model_and_tokenizer(device: &Device) -> Result<(ClipModel, Tokenizer), Bo
 
 pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, Box<dyn Error>> {
     let l2_norm = v.sqr()?.sum_keepdim(D::Minus1)?.sqrt()?;
-    Ok(v.broadcast_div(&l2_norm).map_err(|e| Box::new(e))?)
+    Ok(v.broadcast_div(&l2_norm).map_err(Box::new)?)
 }

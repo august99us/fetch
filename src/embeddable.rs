@@ -53,7 +53,7 @@ impl Embeddable for PreviewedFile<'_> {
                 // TODO: make this implementation more mature, both using a better model and better code,
                 // with error handling, etc.
                 let (model, _tokenizer) = get_model_and_tokenizer().await
-                    .map_err(|e| EmbeddingError::Initialization(e))?;
+                    .map_err(EmbeddingError::Initialization)?;
                 let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
                     // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
                     .map_err(|e| EmbeddingError::IO { path: self.preview_path.to_string(), source: e })?;
@@ -79,7 +79,7 @@ impl Embeddable for PreviewedFile<'_> {
 impl Embeddable for &str {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         let (model, tokenizer) = get_model_and_tokenizer().await
-            .map_err(|e| EmbeddingError::Initialization(e))?;
+            .map_err(EmbeddingError::Initialization)?;
 
         let encoding = tokenizer.encode(*self, true)
             .map_err(|e| EmbeddingError::Tokenizing { query: self.to_string(), source: anyhow::Error::from_boxed(e) })?;
@@ -91,7 +91,7 @@ impl Embeddable for &str {
         let embedding = model.get_text_features(&tokens)
             .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Performing clip transformation", source: e.into() })?;
         let embedding = div_l2_norm(&embedding)
-            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Normalizing result vector", source: e.into() })?;
+            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Normalizing result vector", source: e })?;
         let vector = embedding.to_vec2::<f32>()
             .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Remapping to vec2", source: e.into() })?
             .swap_remove(0);
@@ -127,7 +127,7 @@ async fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), anyhow::Err
     let tokenizer_file = RetryIf::spawn(retry_strategy.clone(), || api.get("tokenizer.json"),
         retry_condition).await?;
 
-    let vb = VarBuilder::from_pth(model_file, DType::F32, &device)?;
+    let vb = VarBuilder::from_pth(model_file, DType::F32, device)?;
 
     let config = ClipConfig::vit_base_patch32();
     // lock aquisition error handling?
@@ -158,10 +158,10 @@ fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<T
 
 pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, anyhow::Error> {
     let l2_norm = v.sqr()?.sum_keepdim(D::Minus1)?.sqrt()?;
-    Ok(v.broadcast_div(&l2_norm).map_err(|e| Box::new(e))?)
+    Ok(v.broadcast_div(&l2_norm).map_err(Box::new)?)
 }
 
 fn device() -> &'static Device {
     static DEVICE: OnceLock<Device> = OnceLock::new();
-    &DEVICE.get_or_init(|| Device::cuda_if_available(0).unwrap())
+    DEVICE.get_or_init(|| Device::cuda_if_available(0).unwrap())
 }

@@ -2,7 +2,6 @@ use std::{fs, sync::LazyLock};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use config::{Config, ConfigError, File};
-use lancedb::data;
 
 static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_path_buf(dirs::data_local_dir()
             .expect("Failed to get local data directory"))
@@ -54,7 +53,7 @@ fn get_data_config() -> Result<Config, ConfigError> {
 }
 
 fn get_app_folder() -> &'static Utf8Path {
-    let folder: &'static Utf8PathBuf = &*APP_FOLDER;
+    let folder: &'static Utf8PathBuf = &APP_FOLDER;
     if !fs::exists(folder).expect("Error while determining if app data directory exists") {
             fs::create_dir_all(folder).expect("Failed to create local data directory");
     }

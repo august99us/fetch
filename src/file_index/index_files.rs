@@ -44,7 +44,7 @@ impl<I: IndexVector + QueryVectorKeys + Send + Sync> IndexFiles for FileIndexer<
             Err(PreviewError::NotFound {..}) | Ok(None) => {
                 // File not found or preview type not registered with preview system
                 match self.vector_store.delete(path.as_str(), None).await {
-                    Ok(()) => Ok(FileIndexing::Result { path: path, r#type: FileIndexing::ResultType::Cleared }),
+                    Ok(()) => Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared }),
                     Err(e) => Err(FileIndexing::Error { path: path.to_string(), source: e.into(),
                         r#type: FileIndexing::ErrorType::Clear }),
                 }

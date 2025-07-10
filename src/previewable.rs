@@ -56,9 +56,9 @@ impl PossiblyPreviewable for Utf8Path {
 
         let preview_content;
 
-        if os_preview_generator::has_generator_for_type(&extension) {
+        if os_preview_generator::has_generator_for_type(extension) {
             preview_content = Some(os_preview_generator::generate_preview(file).unwrap());
-        } else if default_preview_generator::has_generator_for_type(&extension) {
+        } else if default_preview_generator::has_generator_for_type(extension) {
             preview_content = Some(default_preview_generator::generate_preview(file).unwrap());
         } else {
             preview_content = None;

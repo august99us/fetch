@@ -1,4 +1,4 @@
-use std::{future::Future, sync::{Arc, OnceLock}};
+use std::{future::Future, sync::Arc};
 
 use arrow_array::{Array, FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
@@ -56,7 +56,7 @@ impl LanceDBStore {
 
         let db = connect(data_dir)
             .execute().await
-            .map_err(|e| LanceDBError::Connection(e))?;
+            .map_err(LanceDBError::Connection)?;
         let schema = build_schema(vector_len);
         let table = db.create_empty_table(TABLE_NAME, schema.clone())
             .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
@@ -75,7 +75,7 @@ impl LanceDBStore {
     pub async fn drop(data_dir: &str) -> Result<(), LanceDBError> {
         let db = connect(data_dir)
             .execute().await
-            .map_err(|e| LanceDBError::Connection(e))?;
+            .map_err(LanceDBError::Connection)?;
         db.drop_all_tables().await
             .map_err(|e| LanceDBError::TableOperation { operation: "Dropping all tables", source: e })?;
         Ok(())
@@ -136,8 +136,7 @@ impl IndexVector for LanceDBStore {
         );
 
         let mut merge = self.table.merge_insert(&[KEY_COLUMN]);
-        merge.when_matched_update_all(Some(format!("target.{} < source.{}", SEQUENCE_NUMBER_COLUMN, 
-            SEQUENCE_NUMBER_COLUMN))).when_not_matched_insert_all();
+        merge.when_matched_update_all(Some(format!("target.{SEQUENCE_NUMBER_COLUMN} < source.{SEQUENCE_NUMBER_COLUMN}"))).when_not_matched_insert_all();
 
         merge.execute(Box::new(batches)).await
             .map_err(|e| VectorStoreError::RecordOperation { record_key: key.to_string(), 
@@ -147,9 +146,9 @@ impl IndexVector for LanceDBStore {
     }
 
     async fn delete(&self, key: &str, optional_sequence_number: Option<u64>) -> Result<(), VectorStoreError> {
-        let mut delete_condition = format!("{} = '{}'", KEY_COLUMN, key);
+        let mut delete_condition = format!("{KEY_COLUMN} = '{key}'");
         if let Some(sn) = optional_sequence_number {
-            delete_condition.push_str(&format!(" AND {} < {}", SEQUENCE_NUMBER_COLUMN, sn));
+            delete_condition.push_str(&format!(" AND {SEQUENCE_NUMBER_COLUMN} < {sn}"));
         }
 
         self.table.delete(&delete_condition).await

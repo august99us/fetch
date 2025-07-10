@@ -29,9 +29,9 @@ All binaries should have `--help` dialogues for more info.
 Most of these settings can be found in the default application folder:
 | Platform | Folder |
 | --- | --- |
-| Linux | /home/<user>/.local/share/fetch |
-| macOS | /Users/<user>/Library/Application Support/fetch |
-| Windows | C:\Users\<user>\AppData\Local\fetch |
+| Linux | `/home/<user>/.local/share/fetch` |
+| macOS | `/Users/<user>/Library/Application Support/fetch` |
+| Windows | `C:\Users\<user>\AppData\Local\fetch` |
 
 After the first run of any binary (except drop) there should be a daemon.toml and data.toml 
 file in that folder, which contains more default settings.

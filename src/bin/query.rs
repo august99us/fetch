@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let results = result_future.await
         .unwrap_or_else(|e| panic!("Issue querying file index: {e:?}"));
 
-    if results.len() == 0 {
+    if results.is_empty() {
         println!("No results!");
     } else {
-        println!("Results ({}):", results.len().to_string());
+        println!("Results ({}):", results.len());
         for (i, result) in results.iter().enumerate() {
             println!("{}: {}, {}", i + 1, result.path, result.similarity);
         }

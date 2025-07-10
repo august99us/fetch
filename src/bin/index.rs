@@ -89,7 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    println!("{} files successfully indexed, {} files failed.", success, fail);
+    println!("{success} files successfully indexed, {fail} files failed.");
     if fail > 0 {
         return Err(anyhow::Error::msg("oh no"));
     }
@@ -110,9 +110,9 @@ fn clean_paths(paths: Vec<PathBuf>) -> Vec<Utf8PathBuf> {
         // is empty.
     paths.sort();
     paths.dedup();
-    paths.into_iter().map(|pb| Utf8PathBuf::from_path_buf(pb)) // Convert to Utf8PathBuf
+    paths.into_iter().map(Utf8PathBuf::from_path_buf) // Convert to Utf8PathBuf
         .collect::<Result<Vec<Utf8PathBuf>, PathBuf>>() // collect results
-        .unwrap_or_else(|e| panic!("Error verifying utf8 validity of path: {:?}", e))
+        .unwrap_or_else(|e| panic!("Error verifying utf8 validity of path: {e:?}"))
 }
 
 /// Explores (io call) the paths given in "paths" vector and classifies them into one of three categories:
@@ -144,15 +144,15 @@ fn classify_paths(paths: Vec<PathBuf>) -> ClassifiedPaths {
 fn explore_directories(folders: Vec<PathBuf>, files: &mut Vec<PathBuf>, recursive: bool) {
     let mut hashset: HashSet<PathBuf> = HashSet::new();
     let mut queue = folders;
-    while !queue.is_empty() {
-        let folder = queue.pop().unwrap(); // guaranteed to exist
+    while let Some(folder) = queue.pop() {
+         // guaranteed to exist
         if hashset.contains(&folder) {
             eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
                 directory structure somewhere? Folder: {}", folder.to_str().expect("error converting pathbuf to string"));
                 continue
         }
         for entry_result in folder.read_dir()
-            .expect(&format!("failed reading directory: {}", folder.to_str().expect("error converting pathbuf to string"))) {
+            .unwrap_or_else(|_| panic!("failed reading directory: {}", folder.to_str().expect("error converting pathbuf to string"))) {
             match entry_result {
                 Ok(entry) => {
                     let entry_path = entry.path();
@@ -188,7 +188,7 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
 
     for file in files {
         let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e| 
-            panic!("Failed to acquire semaphore permit (was the semaphore closed?): {:?}", e));
+            panic!("Failed to acquire semaphore permit (was the semaphore closed?): {e:?}"));
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();
         let handle = task::spawn(async move {
@@ -198,16 +198,16 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
             bar_clone.inc(1);
             match result {
                 Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Indexed }) => {
-                    bar_clone.println(format!("File {} successfully indexed", path));
-                    return Ok(());
+                    bar_clone.println(format!("File {path} successfully indexed"));
+                    Ok(())
                 },
                 Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared  }) => {
-                    bar_clone.println(format!("File {} not found or could not be previewed, successfully cleared from index", path));
-                    return Ok(());
+                    bar_clone.println(format!("File {path} not found or could not be previewed, successfully cleared from index"));
+                    Ok(())
                 },
                 Err(e) => {
                     bar_clone.println(format!("Error while processing file with path {:?}: {:?}", e.path, e.source()));
-                    return Err(());
+                    Err(())
                 },
             }
         });
@@ -216,7 +216,7 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
 
     let mut results = vec![];
     for handle in handles {
-        results.push(handle.await.unwrap_or_else(|_e| Err(())));
+        results.push(handle.await.unwrap_or(Err(())));
     }
 
     bar.finish();

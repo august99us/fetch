@@ -16,7 +16,7 @@ impl<'a> Deref for FileQueryingResult {
 }
 impl From<Vec<QueryKeyResult>> for FileQueryingResult {
     fn from(value: Vec<QueryKeyResult>) -> Self {
-        FileQueryingResult { results: value.into_iter().map(|r| QueryResult::from(r)).collect() }
+        FileQueryingResult { results: value.into_iter().map(QueryResult::from).collect() }
     }
 }
 

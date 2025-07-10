@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File};
+use std::error::Error;
 
 use crate::vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys};
 
