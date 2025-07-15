@@ -29,7 +29,10 @@ pub fn get_watchlist_file_path() -> Utf8PathBuf {
 fn get_daemon_config() -> Result<Config, ConfigError> {
     let config_file_path = get_app_folder().join("daemon.toml");
     if !fs::exists(&config_file_path).expect("Error while checking if data config file exists") {
+        #[cfg(target_family = "unix")]
         let bytes = include_bytes!("../artifacts/defaults/daemon.toml");
+        #[cfg(target_family = "windows")]
+        let bytes = include_bytes!("../artifacts/defaults/windows/daemon.toml");
         // If the daemon.toml file does not exist, create it with default values
         fs::write(&config_file_path, bytes).expect("Failed to create default daemon.toml");
     }
@@ -42,7 +45,10 @@ fn get_daemon_config() -> Result<Config, ConfigError> {
 fn get_data_config() -> Result<Config, ConfigError> {
     let config_file_path = get_app_folder().join("data.toml");
     if !fs::exists(&config_file_path).expect("Error while checking if data config file exists") {
+        #[cfg(target_family = "unix")]
         let bytes = include_bytes!("../artifacts/defaults/data.toml");
+        #[cfg(target_family = "windows")]
+        let bytes = include_bytes!("../artifacts/defaults/windows/data.toml");
         // If the data.toml file does not exist, create it with default values
         fs::write(&config_file_path, bytes).expect("Failed to create default data.toml");
     }
