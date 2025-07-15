@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use futures::{stream::FuturesUnordered, FutureExt};
-use iced::{task::Handle, widget::{button, column, horizontal_rule, horizontal_space, row, text_input}, Element, Task, Theme};
+use iced::{task::Handle, widget::{button, column, horizontal_rule, row, text_input}, Element, Length, Size, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area};
 
@@ -8,6 +8,7 @@ const SINGLE_PAD : u16 = 5;
 
 pub fn run_fetch_application() -> iced::Result {
     iced::application("fetch", Landing::update, Landing::view)
+        .window_size(Size::new(1075.0, 700.0))
         .theme(|_state| theme())
         .run()
 }
@@ -107,7 +108,8 @@ impl Landing {
                 &self.query.as_ref().unwrap_or(&"".to_string()))
             .on_input(LandingMessage::QueryChanged)
             .on_submit(LandingMessage::QuerySet)
-            .padding(SINGLE_PAD);
+            .padding(SINGLE_PAD)
+            .width(Length::Fill);
         let search_button = button("Search")
             .on_press(LandingMessage::QuerySet)
             .padding(SINGLE_PAD);
@@ -119,11 +121,12 @@ impl Landing {
 
         let results_area = results_area(&self.files);
 
-        column![
-            search_row,
-            horizontal_rule(1),
-            results_area,
-        ].padding(SINGLE_PAD).spacing(SINGLE_PAD).into()
+        column![search_row, horizontal_rule(1), results_area]
+            .width(Length::Fill)
+            .height(900)
+            .padding(SINGLE_PAD)
+            .spacing(SINGLE_PAD)
+            .into()
     }
 }
 

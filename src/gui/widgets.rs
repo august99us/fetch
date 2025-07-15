@@ -1,48 +1,98 @@
-use iced::{alignment::Horizontal, widget::{column, container, image::Handle, text, Container, Image}, Element, Length};
+use iced::{alignment::Horizontal, widget::{column, container, image::Handle, row, text, Image}, Element, Length};
 
 use crate::gui::{FileWithPreview, LandingMessage, SINGLE_PAD};
 
 const PLACEHOLDER_IMAGE: &[u8] = include_bytes!("../../artifacts/placeholder.png");
+const TILE_WIDTH: u16 = 200;
+const TILE_HEIGHT: u16 = 150;
 
-pub fn file_tile(file: &FileWithPreview) -> Element<'_, LandingMessage> {
-    let preview_image: Image<Handle>;
-    match &file.preview {
-        Some(preview_path) => {
-            preview_image = iced::widget::image(Handle::from_path(preview_path)).height(Length::Fill);
+pub fn file_tile(item: Option<&FileWithPreview>) -> Element<'_, LandingMessage> {
+    let content: Element<'_, LandingMessage>;
+    match item {
+        Some(file) => {
+            let preview_image: Image<Handle>;
+            match &file.preview {
+                Some(preview_path) => {
+                    preview_image = iced::widget::image(Handle::from_path(preview_path)).height(Length::Fill);
+                }
+                None => {
+                    // If no preview is available, just show the placeholder image
+                    preview_image = iced::widget::image(Handle::from_bytes(PLACEHOLDER_IMAGE)).height(Length::Fill);
+                }
+            }
+            let file_name = file.path.file_name().unwrap_or("<Invalid Name>");
+
+            content = column![preview_image, text(file_name.to_string())]
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .padding(SINGLE_PAD).into();
         }
         None => {
-            // If no preview is available, just show the placeholder image
-            preview_image = iced::widget::image(Handle::from_bytes(PLACEHOLDER_IMAGE)).height(Length::Fill);
+            content = text("").into();
         }
     }
 
-    let file_name = file.path.file_name().unwrap_or("<Invalid Name>");
-    println!("Creating file tile for: {}", file_name);
-
-    container(column![preview_image, text(file_name.to_string())]
-        .width(200)
-        .height(150)
-        .align_x(Horizontal::Center)
-        .padding(SINGLE_PAD)).style(container::bordered_box).into()
+    container(content).width(TILE_WIDTH).height(TILE_HEIGHT).style(container::bordered_box).into()
 }
 
+// TODO: Perhaps this would be better as a custom widget?
+// as of now there does not seem to be a way to determine the actual size of the
+// container when drawn (only Length::Fill size hints etc) so there is no way to
+// figure out the size of the grid. Probably this needs to happen during the draw
+// operation for a custom widget. currently this lays things out in a fixed 5x3 grid
 pub fn results_area(files: &Option<Vec<FileWithPreview>>) -> Element<'_, LandingMessage> {
-    let cont: Container<_>;
+    let child_element: Element<'_, LandingMessage>;
     if let Some(files) = files {
         if files.is_empty() {
             return iced::widget::text("No results found").into();
         }
-        let file_elements: Vec<Element<LandingMessage>> = files.iter()
-            .map(|file| file_tile(file).into())
-            .collect();
-        cont = container(column(file_elements).spacing(SINGLE_PAD)).clip(true)
+        // Temporary 5x3
+        let grid = layout_tile_grid(files.len(), (TILE_WIDTH * 5, TILE_HEIGHT * 4));
+        let rows: Vec<Element<'_, LandingMessage>> = grid.into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .filter_map(|index| {
+                        if index >= 0 {
+                            file_tile(Some(&files[index as usize])).into()
+                        } else {
+                            file_tile(None).into()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .map(|row_elements| row(row_elements).spacing(SINGLE_PAD).into())
+            .collect::<Vec<_>>();
+        child_element = column(rows).spacing(SINGLE_PAD).into();
     } else {
-        cont = container("No results to display").center(Length::Fill)
+        child_element = text("No results to display").center().into();
     }
 
-    cont.width(Length::Fill)
+    container(child_element)
+        .clip(true)
+        .width(Length::Fill)
         .height(Length::Fill)
         .padding(SINGLE_PAD)
         .style(container::bordered_box)
         .into()
+}
+
+fn layout_tile_grid(num_items: usize, cont_size: (u16, u16)) -> Vec<Vec<i16>> {
+    let n_width = cont_size.0 / TILE_WIDTH;
+    let n_height = cont_size.1 / TILE_HEIGHT;
+    let mut grid = vec![vec![0; n_width as usize]; n_height as usize];
+
+    let mut index = 0;
+    for i in 0..n_height {
+        for j in 0..n_width {
+            if index < num_items {
+                grid[i as usize][j as usize] = index as i16;
+                index += 1;
+            } else {
+                grid[i as usize][j as usize] = -1; // Initialize with -1 to indicate empty
+            }
+        }
+    }
+
+    grid
 }
