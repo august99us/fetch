@@ -24,7 +24,7 @@ pub trait IndexFiles {
 
 impl<I: IndexVector + QueryVectorKeys + Send + Sync> IndexFiles for FileIndexer<I> {
     async fn index<'a>(&self, path: &'a Utf8Path) -> Result<FileIndexing::Result<'a>, FileIndexing::Error> {
-        let preview_result: Result<Option<PreviewedFile<'a>>, PreviewError> = path.preview().await;
+        let preview_result: Result<Option<PreviewedFile>, PreviewError> = path.preview().await;
 
         match preview_result {
             Ok(Some(p)) => { 

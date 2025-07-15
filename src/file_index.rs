@@ -21,10 +21,10 @@ impl<I: IndexVector + QueryVectorKeys> FileIndexer<I> {
             .map_err(|e| FileIndexerError::DependencyError { dependency: "Lance Db Vector Store", 
                 source: Box::new(e) })?;
 
-        FileIndexer::with(lancedbstore)
+        Ok(FileIndexer::with(lancedbstore))
     }
-    pub fn with(vector_store: I) -> Result<FileIndexer<I>, FileIndexerError> {
-        Ok(FileIndexer { vector_store })
+    pub fn with(vector_store: I) -> FileIndexer<I> {
+        FileIndexer { vector_store }
     }
 }
 

@@ -70,7 +70,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let data_dir = app_config::get_default_data_directory();
     let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
     // TODO: unwrap error handling
-    let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore).unwrap());
+    let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));
     let files = files.into_iter().map(Arc::new).collect();
 
     println!("Indexing files into index stored in the directory {}", data_dir.as_str());

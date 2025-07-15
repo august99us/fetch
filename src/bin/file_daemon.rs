@@ -51,8 +51,7 @@ async fn main() -> Result<(), ()>{
     let data_directory = app_config::get_default_data_directory();
     let vector_store = LanceDBStore::new(data_directory.as_str(), 512).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
-    let file_indexer = FileIndexer::with(vector_store)
-        .unwrap_or_else(|e| panic!("Failed to create file indexer: {e:?}"));
+    let file_indexer = FileIndexer::with(vector_store);
 
     let mut handles = Vec::with_capacity(worker_count);
     let cancellation_token = CancellationToken::new();

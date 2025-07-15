@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let data_dir = app_config::get_default_data_directory();
     let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
-    let file_indexer = FileIndexer::with(lancedbstore)?;
+    let file_indexer = FileIndexer::with(lancedbstore);
 
     println!("Querying file index at {} with query: \"{}\"", data_dir.as_str(), args.query);
 

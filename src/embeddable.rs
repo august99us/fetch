@@ -46,7 +46,7 @@ pub enum EmbeddingError {
     Unknown { msg: &'static str, #[source] source: anyhow::Error },
 }
 
-impl Embeddable for PreviewedFile<'_> {
+impl Embeddable for PreviewedFile {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         match self.r#type {
             PreviewType::Image => {

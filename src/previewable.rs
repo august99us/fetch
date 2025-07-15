@@ -6,8 +6,8 @@ pub enum PreviewType {
     Text,
     Image,
 }
-pub struct PreviewedFile<'a> {
-    pub path: &'a Utf8Path,
+pub struct PreviewedFile {
+    pub path: Utf8PathBuf,
     pub preview_path: Utf8PathBuf,
     pub timestamp: SystemTime,
     pub r#type: PreviewType,
@@ -66,7 +66,7 @@ impl PossiblyPreviewable for Utf8Path {
 
         // TODO: actually use the content returned by the preview_generator
         Ok(preview_content.map(|c| PreviewedFile {
-            path: self,
+            path: self.to_path_buf(),
             preview_path: self.to_path_buf(),
             timestamp: SystemTime::now(),
             r#type: PreviewType::Image,
