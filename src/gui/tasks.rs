@@ -1,8 +1,8 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use fetch::{app_config, file_index::{query_files::QueryFiles, FileIndexer}, previewable::PossiblyPreviewable, vector_store::lancedb_store::LanceDBStore};
 
 pub async fn run_index_query(query: String) -> Result<Vec<Utf8PathBuf>, String> {
-    let data_dir = app_config::get_default_data_directory();
+    let data_dir = app_config::get_default_index_directory();
     let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
     let file_indexer = FileIndexer::with(lancedbstore);

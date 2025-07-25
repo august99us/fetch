@@ -1,4 +1,6 @@
-use std::{error::Error, fs::File, io::{Bytes, Read}};
+use std::fs::File;
+
+use camino::{Utf8Path, Utf8PathBuf};
 
 pub fn has_generator_for_type(extension: &str) -> bool {
     let os_generator: Option<Box<dyn ImpliesGeneratingPreview>> = None;
@@ -9,15 +11,15 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub fn generate_preview(file: File) -> Result<Bytes<File>, Box<dyn Error>> {
-    Ok(file.bytes())
+pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, anyhow::Error> {
+    Ok(Some(Utf8PathBuf::new()))
 }
 
 trait ImpliesGeneratingPreview {
     fn has_generator_for_type(&self, extension: &str) -> bool;
 }
 trait GeneratesPreview {
-    fn generate_preview(&self, file: File) -> Result<Bytes<File>, Box<dyn Error>>;
+    fn generate_preview(&self, file: File) -> Result<Utf8PathBuf, anyhow::Error>;
 }
 
 struct WindowsPreviewGenerator;
@@ -27,7 +29,7 @@ impl ImpliesGeneratingPreview for WindowsPreviewGenerator {
     }
 }
 impl GeneratesPreview for WindowsPreviewGenerator {
-    fn generate_preview(&self, file: File) -> Result<Bytes<File>, Box<dyn Error>> {
-        Ok(file.bytes())
+    fn generate_preview(&self, file: File) -> Result<Utf8PathBuf, anyhow::Error> {
+        Ok(Utf8PathBuf::new())
     }
 }

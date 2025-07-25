@@ -1,1 +1,2 @@
-default_index_directory = "%%AppDataDirectory%%\\data\\default"
+default_index_directory = "%%AppDataDirectory%%\\data\\default\\index"
+default_preview_directory = "%%AppDataDirectory%%\\data\\default\\preview"

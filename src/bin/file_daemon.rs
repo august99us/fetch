@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use crossbeam_channel::{unbounded, Receiver};
-use fetch::{app_config, file_index::{index_files::IndexFiles, query_files::QueryFiles, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector}};
+use fetch::{app_config, file_index::{index_files::IndexFiles, query_files::QueryFiles, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 use notify::{event::{CreateKind, DataChange, ModifyKind}, EventKind, RecursiveMode};
 use notify_debouncer_full::DebouncedEvent;
 use tokio::fs;
@@ -48,7 +48,7 @@ async fn main() -> Result<(), ()>{
 
     println!("File change tracking daemon is initiating workers...");
 
-    let data_directory = app_config::get_default_data_directory();
+    let data_directory = app_config::get_default_index_directory();
     let vector_store = LanceDBStore::new(data_directory.as_str(), 512).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
     let file_indexer = FileIndexer::with(vector_store);

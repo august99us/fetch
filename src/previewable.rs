@@ -1,4 +1,4 @@
-use std::{fs::File, time::SystemTime};
+use std::time::SystemTime;
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -39,35 +39,29 @@ pub enum PreviewError {
     Encoding { culprit: &'static str },
     #[error("File was not found")]
     NotFound { path: String },
+    #[error("Error while generating preview")]
+    Generation { path: String, #[source] source: anyhow::Error },
     #[error("Error interacting with file")]
     IO { path: String, #[source] source: std::io::Error },
 }
 
 impl PossiblyPreviewable for Utf8Path {
     async fn preview(&self) -> Result<Option<PreviewedFile>, PreviewError> {
+        // check if preview is already available
+
         let extension = self.extension().unwrap_or("");
-        let file = File::open(self).map_err(|e| -> PreviewError {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => PreviewError::NotFound { path: self.to_string() },
-                _ => PreviewError::IO { path: self.to_string(), source: e },
-            }
-        })?;
 
+        let preview_path;
 
-        let preview_content;
-
-        if os_preview_generator::has_generator_for_type(extension) {
-            preview_content = Some(os_preview_generator::generate_preview(file).unwrap());
-        } else if default_preview_generator::has_generator_for_type(extension) {
-            preview_content = Some(default_preview_generator::generate_preview(file).unwrap());
+        if cache::os::has_generator_for_type(extension) {
+            preview_path = cache::os::generate_preview(self).unwrap();
         } else {
-            preview_content = None;
+            preview_path = cache::default::generate_preview(self).unwrap();
         }
 
-        // TODO: actually use the content returned by the preview_generator
-        Ok(preview_content.map(|c| PreviewedFile {
+        Ok(preview_path.map(|pp| PreviewedFile {
             path: self.to_path_buf(),
-            preview_path: self.to_path_buf(),
+            preview_path: pp.to_path_buf(),
             timestamp: SystemTime::now(),
             r#type: PreviewType::Image,
         }))
@@ -76,5 +70,4 @@ impl PossiblyPreviewable for Utf8Path {
 
 // Private helper methods/modules?
 
-mod os_preview_generator;
-mod default_preview_generator;
+mod cache;

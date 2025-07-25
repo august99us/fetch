@@ -8,12 +8,32 @@ static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_pa
             .expect("Local data directory is not a valid UTF-8 path")
             .join("fetch"));
 
-pub fn get_default_data_directory() -> Utf8PathBuf {
+pub fn get_default_index_directory() -> Utf8PathBuf {
     let data_config = get_data_config().expect("Failed to load data config");
 
-    Utf8PathBuf::from(data_config.get_string("default_index_directory")
+    let folder = Utf8PathBuf::from(data_config.get_string("default_index_directory")
         .expect("Failed to get default table directory from data config")
-        .replace("%%AppDataDirectory%%", get_app_folder().as_str()))
+        .replace("%%AppDataDirectory%%", get_app_folder().as_str()));
+    // Create if it doesnt exist
+    if !fs::exists(&folder).expect("Error while determining if index directory exists") {
+            fs::create_dir_all(&folder).expect("Failed to create default index directory");
+    }
+
+    folder
+}
+
+pub fn get_default_preview_directory() -> Utf8PathBuf {
+    let data_config = get_data_config().expect("Failed to load data config");
+
+    let folder = Utf8PathBuf::from(data_config.get_string("default_preview_directory")
+        .expect("Failed to get default preview directory from data config")
+        .replace("%%AppDataDirectory%%", get_app_folder().as_str()));
+    // create if doesn't exist
+    if !fs::exists(&folder).expect("Error while determining if preview directory exists") {
+            fs::create_dir_all(&folder).expect("Failed to create default preview directory");
+    }
+
+    folder
 }
 
 pub fn get_watchlist_file_path() -> Utf8PathBuf {

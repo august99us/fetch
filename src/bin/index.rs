@@ -67,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("{} files discovered and queued for indexing.", files.len());
     }
 
-    let data_dir = app_config::get_default_data_directory();
+    let data_dir = app_config::get_default_index_directory();
     let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
     // TODO: unwrap error handling
     let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));

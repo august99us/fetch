@@ -142,6 +142,8 @@ fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<T
 
     let img = image::ImageReader::open(path)?.decode()?;
     let (height, width) = (image_size, image_size);
+    // resize_to_fill resizes the image, but trims it to fit the given dimensions, meaning it cuts off
+    // portions of the image. perhaps this needs to be changed eventually.
     let img = img.resize_to_fill(
         width as u32,
         height as u32,
