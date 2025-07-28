@@ -67,6 +67,8 @@ pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewE
     fs::write(&preview_path, &bytes)
         .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })?;
 
+    println!("Generated preview for file: {} at {}", path, preview_path);
+
     Ok(Some(preview_path))
 }
 
