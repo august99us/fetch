@@ -1,7 +1,6 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::process::Command;
-#[cfg(target_os = "linux")]
 use std::process::Stdio;
 
 use camino::Utf8Path;
