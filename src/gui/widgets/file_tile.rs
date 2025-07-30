@@ -25,7 +25,7 @@ impl FileTile {
             content_fit: ContentFit::Contain,
             // TODO: figure out if these clones can be replaced with a lifetime
             path: file_with_preview.path.clone(),
-            preview_path: Some(file_with_preview.path.clone()),
+            preview_path: file_with_preview.preview.clone(),
         }
     }
 
