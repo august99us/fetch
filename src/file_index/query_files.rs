@@ -10,9 +10,9 @@ pub trait QueryFiles {
 }
 
 impl<I: IndexVector + QueryVectorKeys + Send + Sync> QueryFiles for FileIndexer<I> {
-    // Query 15 by default
+    // Query 20 by default
     fn query(&self, file_description: &str) -> impl Future<Output = Result<FileQuerying::Result, FileQuerying::Error>> {
-        self.query_n(file_description, 15)
+        self.query_n(file_description, 20)
     }
 
     async fn query_n(&self, file_description: &str, num_results: u32) -> Result<FileQuerying::Result, FileQuerying::Error> {

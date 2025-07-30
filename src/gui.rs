@@ -26,7 +26,7 @@ pub struct Landing {
 }
 
 #[derive(Clone)]
-struct FileWithPreview {
+pub struct FileWithPreview {
     path: Utf8PathBuf,
     preview: Option<Utf8PathBuf>,
 }
@@ -45,6 +45,7 @@ pub enum LandingMessage {
     QuerySet,
     QueryFinished(Result<Vec<Utf8PathBuf>, String>),
     PreviewCompleted(usize, Result<Option<Utf8PathBuf>, String>),
+    FileClicked(Utf8PathBuf),
 }
 
 impl Landing {
@@ -53,7 +54,7 @@ impl Landing {
             LandingMessage::QueryChanged(query) => {
                 self.query = Some(query);
                 Task::none()
-            }
+            },
             LandingMessage::QuerySet => {
                 let ref_query = self.query.as_ref();
                 if ref_query == None || ref_query.unwrap().is_empty() {
@@ -62,7 +63,7 @@ impl Landing {
                 } else {
                     Task::perform(run_index_query(ref_query.unwrap().to_string()), LandingMessage::QueryFinished)
                 }
-            }
+            },
             LandingMessage::QueryFinished(files) => {
                 println!("Query finished with results: {:?}", files);
 
@@ -86,7 +87,7 @@ impl Landing {
                 self.loading_task_handle = Some(handle);
 
                 task
-            }
+            },
             LandingMessage::PreviewCompleted(i, preview_result) => {
                 if self.files.is_none() {
                     println!("Finished loading preview for file but no search results are stored? ignoring");
@@ -99,7 +100,16 @@ impl Landing {
                 let preview_path = preview_result.unwrap();
                 self.files.as_mut().unwrap()[i].preview = preview_path;
                 Task::none()
-            }
+            },
+            LandingMessage::FileClicked(path) => {
+                // Handle file double click, e.g., open the file or show details
+                println!("Opening file location: {}", path);
+
+                utility::show_file_location(&path)
+                    .unwrap_or_else(|e| eprintln!("Error showing file location: {}", e));
+
+                Task::none()
+            },
         }
     }
 
@@ -132,3 +142,4 @@ impl Landing {
 
 mod tasks;
 mod widgets;
+mod utility;

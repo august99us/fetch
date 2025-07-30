@@ -1,6 +1,6 @@
-use iced::{alignment::Horizontal, widget::{column, container, image::Handle, row, text, Image}, Element, Length};
+use iced::{alignment::Horizontal, widget::{column, container, image::Handle, mouse_area, row, text, Image}, Element, Length};
 
-use crate::gui::{FileWithPreview, LandingMessage, SINGLE_PAD};
+use crate::gui::{widgets::file_tile::FileTile, FileWithPreview, LandingMessage, SINGLE_PAD};
 
 const PLACEHOLDER_IMAGE: &[u8] = include_bytes!("../../artifacts/placeholder.png");
 const TILE_WIDTH: u16 = 200;
@@ -33,7 +33,26 @@ pub fn file_tile(item: Option<&FileWithPreview>) -> Element<'_, LandingMessage> 
         }
     }
 
-    container(content).width(TILE_WIDTH).height(TILE_HEIGHT).style(container::bordered_box).into()
+    let inner_container = container(content).width(TILE_WIDTH).height(TILE_HEIGHT).style(container::bordered_box);
+
+    match item {
+        Some(file) => {
+            mouse_area(inner_container)
+                .on_release(LandingMessage::FileClicked(file.path.clone()))
+                .into()
+        },
+        None => {
+            // If no item is provided, just return a mouse area with no action
+            mouse_area(inner_container).into()
+        },
+    }
+}
+
+fn file_tile_custom(item: Option<&FileWithPreview>) -> Element<'_, LandingMessage> {
+    match item {
+        Some(fwp) => FileTile::new(fwp).into(),
+        None => text("").into()
+    }
 }
 
 // TODO: Perhaps this would be better as a custom widget?
@@ -54,9 +73,9 @@ pub fn results_area(files: &Option<Vec<FileWithPreview>>) -> Element<'_, Landing
                 row.into_iter()
                     .filter_map(|index| {
                         if index >= 0 {
-                            file_tile(Some(&files[index as usize])).into()
+                            file_tile_custom(Some(&files[index as usize])).into()
                         } else {
-                            file_tile(None).into()
+                            file_tile_custom(None).into()
                         }
                     })
                     .collect::<Vec<_>>()
@@ -96,3 +115,5 @@ fn layout_tile_grid(num_items: usize, cont_size: (u16, u16)) -> Vec<Vec<i16>> {
 
     grid
 }
+
+mod file_tile;
