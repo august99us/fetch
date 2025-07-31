@@ -1,13 +1,10 @@
-use std::time::Duration;
-
 use camino::Utf8PathBuf;
-use chrono::Utc;
 // TODO: organize iced imports
 use iced::{advanced::{image::{self as iced_image, Handle}, layout, mouse, renderer::Style, widget::{tree, Widget}, Clipboard, Layout, Shell}, event, widget::image::FilterMethod, window, ContentFit, Element, Event, Length, Point, Rectangle, Rotation, Size, Vector};
 
 use crate::gui::FileWithPreview;
 
-use state::{LoadingImageStateMachine, State};
+use state::{State, ThumbnailImage};
 
 pub struct FileTile {
     width: Length,
@@ -68,10 +65,9 @@ where
         let state = tree.state.downcast_mut::<State>();
 
         // update state if new preview_path has been provided
-        if self.preview_path != state.preview_path {
+        if self.preview_path.as_ref().map(Utf8PathBuf::as_path) != state.thumbnail.get_preview_path() {
             let pp = self.preview_path.clone();
-            state.image_state_machine = LoadingImageStateMachine::new(pp.clone());
-            state.preview_path = pp;
+            state.thumbnail = ThumbnailImage::new(pp);
         }
         // how does it know if it needs redraw?
     }
@@ -84,7 +80,7 @@ where
     ) -> layout::Node {
         let state = tree.state.downcast_ref::<State>();
 
-        let image = state.image_state_machine.image_or_default();
+        let image = state.thumbnail.get_image();
         let image_width = image.width() as f32;
         let image_height = image.height() as f32;
         let raw_size = limits.resolve(
@@ -96,17 +92,17 @@ where
         layout::Node::new(raw_size)
     }
 
-    fn on_event(
+    fn update(
             &mut self,
             tree: &mut tree::Tree,
-            event: Event,
+            event: &Event,
             _layout: Layout<'_>,
             _cursor: mouse::Cursor,
             _renderer: &Renderer,
             _clipboard: &mut dyn Clipboard,
-            shell: &mut Shell<'_, Message>,
+            _shell: &mut Shell<'_, Message>,
             _viewport: &Rectangle,
-        ) -> event::Status {
+        ) {
         // Handle mouse events, clicks, etc.
         let state = tree.state.downcast_mut::<State>();
 
@@ -132,28 +128,6 @@ where
                 _ => {}
             }
         }
-
-        if let Event::Window(window::Event::RedrawRequested(now)) = event {
-            // Theoretically this is how this should go:
-            // 0. print that we have received a redraw request at current time. print the time. print the current state's loading enum.
-            //    (testing to see how this works)
-            // 1. check if the current state is a Loading future.
-            // 2. if it is, poll the future to see if it has completed.
-            // 2.a if it has not completed, request another redraw after X ms, return event status captured?
-            // 3. if it has completed, update the state with the new Loading enum and return event ignored?
-
-            println!("Received redraw request at {}. image_state_machine is: {:?}", Utc::now(), state.image_state_machine);
-
-            if state.image_state_machine.is_loading() {
-                state.image_state_machine.update();
-                if !state.image_state_machine.is_finished() {
-                    shell.request_redraw(window::RedrawRequest::At(now + Duration::from_millis(100)));
-                    return event::Status::Captured;
-                }
-            }
-        }
-
-        event::Status::Ignored
     }
 
     fn draw(
@@ -169,7 +143,7 @@ where
         // print the current time, current state in the tree, to figure out how the engine is calling this.
         let state = tree.state.downcast_ref::<State>();
 
-        let image = state.image_state_machine.image_or_default();
+        let image = state.thumbnail.get_image();
         let rgba = image.to_rgba8();
         let handle = Handle::from_rgba(image.width(), image.height(), rgba.into_vec());
 

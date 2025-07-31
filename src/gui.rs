@@ -1,15 +1,17 @@
 use camino::Utf8PathBuf;
 use futures::{stream::FuturesUnordered, FutureExt};
-use iced::{task::Handle, widget::{button, column, horizontal_rule, row, text_input}, Element, Length, Size, Task, Theme};
+use iced::{task::Handle, widget::{button, column, horizontal_rule, row, text_input}, Element, Length, Pixels, Size, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area};
 
-const SINGLE_PAD : u16 = 5;
+const SINGLE_PAD : Pixels = Pixels(5.0);
 
 pub fn run_fetch_application() -> iced::Result {
-    iced::application("fetch", Landing::update, Landing::view)
+    iced::application(Landing::default, Landing::update, Landing::view)
+        .title("Fetch")
         .window_size(Size::new(1075.0, 700.0))
         .theme(|_state| theme())
+        .executor::<tokio::runtime::Runtime>()
         .run()
 }
 
@@ -68,7 +70,7 @@ impl Landing {
                 println!("Query finished with results: {:?}", files);
 
                 // TODO: Disable spinner or loading indicator
-                
+        
                 if files.is_err() {
                     eprintln!("Error querying files: {}", files.as_ref().err().unwrap());
                     self.files = None;

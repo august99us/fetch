@@ -1,6 +1,6 @@
-use std::{fmt, future::Future, io::Cursor, pin::Pin, sync::LazyLock, task::{Context, Poll, Waker}};
+use std::{io::Cursor, sync::LazyLock};
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use image::{DynamicImage, ImageReader};
 
 const PLACEHOLDER_IMAGE_BYTES: &[u8] = include_bytes!("../../../../artifacts/placeholder.png");
@@ -15,9 +15,7 @@ pub struct State {
     pub mouseover: bool,
     pub mouseclick: bool,
     pub disabled: bool,
-    // state needs this to diff
-    pub preview_path: Option<Utf8PathBuf>,
-    pub image_state_machine: LoadingImageStateMachine,
+    pub thumbnail: ThumbnailImage,
 }
 
 impl State {
@@ -26,82 +24,52 @@ impl State {
             mouseover: false,
             mouseclick: false,
             disabled: false,
-            // clone because this is a future state machine and may need to go across thread boundaries
-            // TODO: maybe deal with future scope and make it a lifetime??
-            image_state_machine: LoadingImageStateMachine::new(preview_path.clone()),
-            preview_path,
+            thumbnail: ThumbnailImage::new(preview_path),
         }
     }
 }
 
-pub enum LoadingImageStateMachine {
-    NotStarted,
-    Loading(Pin<Box<dyn Future<Output = Result<DynamicImage, anyhow::Error>>>>),
-    Error(anyhow::Error),
-    Completed(DynamicImage),
+pub enum ThumbnailImage {
+    Preview(Utf8PathBuf, DynamicImage),
+    Default,
+    Broken(Utf8PathBuf),
 }
 
-impl LoadingImageStateMachine {
-    pub fn new(preview_path: Option<Utf8PathBuf>) -> Self {
-        if let Some(path) = preview_path {
-            let mut obj = LoadingImageStateMachine::Loading(Box::pin(async move {
-                match image::open(path) {
-                    Ok(image) => Ok(image),
-                    Err(e) => Err(e.into()),
-                }
-            }));
-            // call update to start the future.
-            obj.update();
-            obj
-        } else {
-            LoadingImageStateMachine::NotStarted
+impl ThumbnailImage {
+    pub fn new(path: Option<Utf8PathBuf>) -> Self {
+        match path {
+            Some(p) => match image::open(&p) {
+                    Ok(i) => ThumbnailImage::Preview(p, i),
+                    Err(_) => ThumbnailImage::Broken(p),
+                },
+            None => ThumbnailImage::Default,
         }
     }
 
-    // remember that futures do nothing until they are polled. this fn must be called in order to start loading the image.
-    pub fn update(&mut self) {
+    pub fn get_image(&self) -> &DynamicImage {
         match self {
-            LoadingImageStateMachine::Loading(pinned_future) => {
-                println!("poll called");
-                if let Poll::Ready(res) = pinned_future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
-                    // If the future is ready, we can update ourself
-                    println!("poll finished");
-                    if let Ok(image) = res {
-                        *self = LoadingImageStateMachine::Completed(image);
-                    } else {
-                        *self = LoadingImageStateMachine::Error(anyhow::anyhow!("Failed to load image"));
-                    }
-                } else { // else we remain in the Loading state
-                    println!("poll still loading");
-                }
-            }
-            _ => {} // this function is a no-op for all other states
+            Self::Preview(_, image) => image,
+            Self::Default => &PLACEHOLDER_IMAGE,
+            Self::Broken(_) => &PLACEHOLDER_IMAGE,
         }
     }
 
-    pub fn is_loading(&self) -> bool {
-        matches!(self, Self::Loading(_))
-    }
-
-    pub fn is_finished(&self) -> bool {
-        matches!(self, Self::Completed(_) | Self::Error(_))
-    }
-
-    pub fn image_or_default(&self) -> &DynamicImage {
+    pub fn get_preview_path(&self) -> Option<&Utf8Path> {
         match self {
-            LoadingImageStateMachine::Completed(dynamic_image) => dynamic_image,
-            _ => &PLACEHOLDER_IMAGE,
+            Self::Preview(path, _) => Some(path),
+            Self::Default => None,
+            Self::Broken(path) => Some(path),
         }
     }
 }
 
-impl fmt::Debug for LoadingImageStateMachine {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotStarted => write!(f, "NotStarted"),
-            Self::Loading(_arg0) => f.debug_tuple("Loading").field(&"a pinned boxed future").finish(),
-            Self::Error(arg0) => f.debug_tuple("Error").field(arg0).finish(),
-            Self::Completed(arg0) => f.debug_tuple("Completed").field(&"a loaded in-memory image").finish(),
+// Equivalence for Preview variant of ThumbnailImage only checks the path member. All others
+// work as expected.
+impl PartialEq for ThumbnailImage {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Preview(l0, _l1), Self::Preview(r0, _r1)) => l0 == r0,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
 }

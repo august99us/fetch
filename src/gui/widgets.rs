@@ -1,10 +1,10 @@
-use iced::{alignment::Horizontal, widget::{column, container, image::Handle, mouse_area, row, text, Image}, Element, Length};
+use iced::{alignment::Horizontal, widget::{column, container, image::Handle, mouse_area, row, text, Image}, Element, Length, Pixels};
 
 use crate::gui::{widgets::file_tile::FileTile, FileWithPreview, LandingMessage, SINGLE_PAD};
 
 const PLACEHOLDER_IMAGE: &[u8] = include_bytes!("../../artifacts/placeholder.png");
-const TILE_WIDTH: u16 = 200;
-const TILE_HEIGHT: u16 = 150;
+const TILE_WIDTH: Pixels = Pixels(200.0);
+const TILE_HEIGHT: Pixels = Pixels(150.0);
 
 pub fn file_tile(item: Option<&FileWithPreview>) -> Element<'_, LandingMessage> {
     let content: Element<'_, LandingMessage>;
@@ -67,7 +67,7 @@ pub fn results_area(files: &Option<Vec<FileWithPreview>>) -> Element<'_, Landing
             return iced::widget::text("No results found").into();
         }
         // Temporary 5x3
-        let grid = layout_tile_grid(files.len(), (TILE_WIDTH * 5, TILE_HEIGHT * 4));
+        let grid = layout_tile_grid(files.len(), (TILE_WIDTH * 5.0, TILE_HEIGHT * 4.0));
         let rows: Vec<Element<'_, LandingMessage>> = grid.into_iter()
             .map(|row| {
                 row.into_iter()
@@ -96,19 +96,19 @@ pub fn results_area(files: &Option<Vec<FileWithPreview>>) -> Element<'_, Landing
         .into()
 }
 
-fn layout_tile_grid(num_items: usize, cont_size: (u16, u16)) -> Vec<Vec<i16>> {
-    let n_width = cont_size.0 / TILE_WIDTH;
-    let n_height = cont_size.1 / TILE_HEIGHT;
-    let mut grid = vec![vec![0; n_width as usize]; n_height as usize];
+fn layout_tile_grid(num_items: usize, cont_size: (Pixels, Pixels)) -> Vec<Vec<i16>> {
+    let n_width = (cont_size.0 / TILE_WIDTH).0 as usize;
+    let n_height = (cont_size.1 / TILE_HEIGHT).0 as usize;
+    let mut grid = vec![vec![0; n_width]; n_height];
 
     let mut index = 0;
     for i in 0..n_height {
         for j in 0..n_width {
             if index < num_items {
-                grid[i as usize][j as usize] = index as i16;
+                grid[i][j] = index as i16;
                 index += 1;
             } else {
-                grid[i as usize][j as usize] = -1; // Initialize with -1 to indicate empty
+                grid[i][j] = -1; // Initialize with -1 to indicate empty
             }
         }
     }
