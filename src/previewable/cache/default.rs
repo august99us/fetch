@@ -1,12 +1,13 @@
-use std::{fs::{self, File}, hash::{DefaultHasher, Hash, Hasher}, io, collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, future::Future, hash::{DefaultHasher, Hash, Hasher}, io, pin::Pin, sync::LazyLock};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use tokio::fs::{self, File};
 
 use crate::{app_config, previewable::{PreviewError, PreviewType}};
 
 // Function interface, takes in a file, returns the bytes of the generated preview and its file extension
 // in eg. "txt" format
-type CalcFnPointer = fn(File) -> Result<Vec<u8>, anyhow::Error>;
+type CalcFnPointer = fn(File) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send>>;
 
 static EXTENSION_TO_PREVIEW_TYPE: LazyLock<HashMap<&'static str, PreviewType>> = LazyLock::new(|| {
     let mut map = HashMap::new();
@@ -20,14 +21,14 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     EXTENSION_TO_PREVIEW_TYPE.contains_key(extension)
 }
 
-pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewError> {
+pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewError> {
     // verify that file_name of the path is valid
     if path.file_name().is_none() {
         return Err(PreviewError::NotFound { path: path.to_string() });
     }
 
     // Verify the file exists and open it
-    let file = File::open(path).map_err(|e| -> PreviewError {
+    let file = File::open(path).await.map_err(|e| -> PreviewError {
         match e.kind() {
             std::io::ErrorKind::NotFound => PreviewError::NotFound { path: path.to_string() },
             _ => PreviewError::IO { path: path.to_string(), source: e },
@@ -52,9 +53,9 @@ pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewE
     let preview_filename = hash_file_path(path, preview_type_to_extension(preview_type));
     let preview_path = retrieve_preview_directory().join(preview_filename);
     if preview_path.is_file() {
-        let preview_file = File::open(&preview_path)
+        let preview_file = File::open(&preview_path).await
             .expect(format!("Could not open preview file even though .is_file() succeeded: {}", preview_path).as_str());
-        if preview_creation_after_file_modification(&file, &preview_file)
+        if preview_creation_after_file_modification(&file, &preview_file).await
             .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })? {
             return Ok(Some(preview_path));
         }
@@ -62,9 +63,9 @@ pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewE
 
     // preview is not available or outdated so it needs to be re-generated
 
-    let bytes = (preview_type_to_calculate_fn(preview_type))(file)
+    let bytes = (preview_type_to_calculate_fn(preview_type))(file).await
         .map_err(|e| PreviewError::Generation { path: path.to_string(), source: e })?;
-    fs::write(&preview_path, &bytes)
+    fs::write(&preview_path, &bytes).await
         .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })?;
 
     println!("Generated preview for file: {} at {}", path, preview_path);
@@ -78,7 +79,7 @@ pub fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewE
 // Expects that this mapping existing was something that was previously checked
 fn preview_type_to_calculate_fn(preview_type: &PreviewType) -> CalcFnPointer {
     match preview_type {
-        PreviewType::Image => image::calculate_preview as CalcFnPointer,
+        PreviewType::Image => (|f| Box::pin(image::calculate_preview(f))) as CalcFnPointer,
         // Add more preview types and their corresponding calculation functions here
         _ => panic!("No calculation function registered for this preview type"),
     }
@@ -95,10 +96,10 @@ fn preview_type_to_extension(preview_type: &PreviewType) -> &'static str {
 }
 
 // checks if the preview file was created after the original file was modified
-fn preview_creation_after_file_modification(file: &File, preview_file: &File) -> Result<bool, io::Error> {
-    let file_modified = file.metadata()?.modified()?.duration_since(std::time::UNIX_EPOCH)
+async fn preview_creation_after_file_modification(file: &File, preview_file: &File) -> Result<bool, io::Error> {
+    let file_modified = file.metadata().await?.modified()?.duration_since(std::time::UNIX_EPOCH)
         .expect("File modified time should be after UNIX_EPOCH");
-    let preview_created = preview_file.metadata()?.created()?.duration_since(std::time::UNIX_EPOCH)
+    let preview_created = preview_file.metadata().await?.created()?.duration_since(std::time::UNIX_EPOCH)
         .expect("Preview created time should be after UNIX_EPOCH");
 
     Ok(preview_created > file_modified)

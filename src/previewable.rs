@@ -54,9 +54,9 @@ impl PossiblyPreviewable for Utf8Path {
         let preview_path;
 
         if cache::os::has_generator_for_type(extension) {
-            preview_path = cache::os::generate_preview(self).unwrap();
+            preview_path = cache::os::generate_preview(self).await?;
         } else {
-            preview_path = cache::default::generate_preview(self).unwrap();
+            preview_path = cache::default::generate_preview(self).await?;
         }
 
         Ok(preview_path.map(|pp| PreviewedFile {

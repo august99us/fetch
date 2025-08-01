@@ -85,7 +85,7 @@ impl Landing {
                     futures.push(generate_or_retrieve_preview(file.path.clone())
                         .map(move |r| LandingMessage::PreviewCompleted(i, r)));
                 }
-                let (task, handle) = Task::run(futures, std::convert::identity).abortable();
+                let (task, handle) = Task::stream(futures).abortable();
                 self.loading_task_handle = Some(handle);
 
                 task
