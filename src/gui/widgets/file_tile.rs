@@ -1,28 +1,35 @@
-use camino::Utf8PathBuf;
 // TODO: organize iced imports
-use iced::{advanced::{image::{self as iced_image, Handle}, layout, mouse, renderer::Style, widget::{tree, Widget}, Clipboard, Layout, Shell}, event, widget::image::FilterMethod, window, ContentFit, Element, Event, Length, Point, Rectangle, Rotation, Size, Vector};
+use iced::{advanced::{self, image::{self, Handle}, layout, mouse, renderer::Style, widget::{tree, Widget}, Clipboard, Layout, Shell}, alignment::Horizontal, widget::{column, text}, Element, Event, Length, Rectangle, Size};
 
-use crate::gui::FileWithPreview;
+use crate::gui::SINGLE_PAD;
 
-use state::{State, ThumbnailImage};
-
-pub struct FileTile {
+pub struct FileTile<'a, Message, Theme, Renderer> {
     width: Length,
     height: Length,
-    content_fit: ContentFit,
-    path: Utf8PathBuf,
-    preview_path: Option<Utf8PathBuf>,
+    file_name: &'a str,
+    content: Element<'a, Message, Theme, Renderer>,
 }
 
-impl FileTile {
-    pub fn new(file_with_preview: &FileWithPreview) -> Self {
+impl<'a, Message, Theme, Renderer> FileTile<'a, Message, Theme, Renderer> 
+where 
+    Message: 'a,
+    Theme: text::Catalog + 'a,
+    Renderer: image::Renderer<Handle = Handle> + advanced::text::Renderer + 'a,
+{
+    pub fn new(file_name: &'a str, preview: &Handle) -> Self {
+        let image = iced::widget::image(preview).height(Length::Fill);
+
+        let content = column![image, text(file_name.clone())]
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .padding(SINGLE_PAD).into();
+
         Self {
             width: Length::Fill,
             height: Length::Fill,
-            content_fit: ContentFit::Contain,
-            // TODO: figure out if these clones can be replaced with a lifetime
-            path: file_with_preview.path.clone(),
-            preview_path: file_with_preview.preview.clone(),
+            file_name,
+            content,
         }
     }
 
@@ -37,10 +44,10 @@ impl FileTile {
     }
 }
 
-// comments are associated with iced 0.13.1. who knows if they will still be relevant in later versions.
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for FileTile
-where
-    Renderer: iced_image::Renderer<Handle = Handle>,
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for FileTile<'a, Message, Theme, Renderer> 
+where 
+    Theme: text::Catalog,
+    Renderer: image::Renderer<Handle = Handle> + advanced::text::Renderer,
 {
     fn size(&self) -> Size<Length> {
         Size {
@@ -49,63 +56,38 @@ where
         }
     }
 
-    // provides identification for which tree node this widget should be assigned???
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
     // provides fresh new state object?
     fn state(&self) -> tree::State {
-        tree::State::new(State::new(self.preview_path.clone()))
+        self.content.as_widget().state()
     }
 
     // I am assuming before calling this function, the engine has already figured out which tree node
     // this widget is assigned to and is diffing against the state in that tree node.
     fn diff(&self, tree: &mut tree::Tree) {
-        let state = tree.state.downcast_mut::<State>();
-
-        // update state if new preview_path has been provided
-        if self.preview_path.as_ref().map(Utf8PathBuf::as_path) != state.thumbnail.get_preview_path() {
-            let pp = self.preview_path.clone();
-            state.thumbnail = ThumbnailImage::new(pp);
-        }
-        // how does it know if it needs redraw?
+        self.content.as_widget().diff(tree)
     }
 
     fn layout(
         &self,
         tree: &mut tree::Tree,
-        _renderer: &Renderer,
+        renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let state = tree.state.downcast_ref::<State>();
-
-        let image = state.thumbnail.get_image();
-        let image_width = image.width() as f32;
-        let image_height = image.height() as f32;
-        let raw_size = limits.resolve(
-            self.width,
-            self.height,
-            Size { width: image_width, height: image_height }
-        );
-
-        layout::Node::new(raw_size)
+        self.content.as_widget().layout(tree, renderer, limits)
     }
 
     fn update(
             &mut self,
             tree: &mut tree::Tree,
             event: &Event,
-            _layout: Layout<'_>,
-            _cursor: mouse::Cursor,
-            _renderer: &Renderer,
-            _clipboard: &mut dyn Clipboard,
-            _shell: &mut Shell<'_, Message>,
-            _viewport: &Rectangle,
+            layout: Layout<'_>,
+            cursor: mouse::Cursor,
+            renderer: &Renderer,
+            clipboard: &mut dyn Clipboard,
+            shell: &mut Shell<'_, Message>,
+            viewport: &Rectangle,
         ) {
         // Handle mouse events, clicks, etc.
-        let state = tree.state.downcast_mut::<State>();
-
         if let Event::Mouse(mouse_event) = event {
             match mouse_event {
                 mouse::Event::CursorMoved { position } => {
@@ -113,95 +95,45 @@ where
                     // todo
                 }
                 mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                    if state.mouseover {
-                        state.mouseclick = true;
-
-                        println!("File clicked: {:?}", self.path);
-
-                        // shell.publish(LandingMessage::FileClicked(self.path.clone()));
-                    }
+                    println!("File clicked: {:?}", self.file_name);
+                    // todo
                 }
                 mouse::Event::ButtonReleased(mouse::Button::Left) => {
-                    println!("Button released: {:?}", self.path);
-                    state.mouseclick = false;
+                    println!("Button released: {:?}", self.file_name);
+                    // todo
                 }
                 _ => {}
             }
         }
+
+        self.content.as_widget_mut().update(tree, event, layout, cursor, renderer, clipboard, shell, viewport);
     }
 
     fn draw(
         &self,
         tree: &tree::Tree,
         renderer: &mut Renderer,
-        _theme: &Theme,
-        _style: &Style,
+        theme: &Theme,
+        style: &Style,
         layout: Layout<'_>,
-        _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
     ) {
         // print the current time, current state in the tree, to figure out how the engine is calling this.
-        let state = tree.state.downcast_ref::<State>();
 
-        let image = state.thumbnail.get_image();
-        let rgba = image.to_rgba8();
-        let handle = Handle::from_rgba(image.width(), image.height(), rgba.into_vec());
-
-        let Size { width, height } = renderer.measure_image(&handle);
-        let image_size = Size::new(width as f32, height as f32);
-
-        let bounds = layout.bounds();
-
-        let adjusted_fit = self.content_fit.fit(image_size, bounds.size());
-
-        let scale = Vector::new(
-            adjusted_fit.width / image_size.width,
-            adjusted_fit.height / image_size.height,
-        );
-
-        let final_size = image_size * scale;
-
-        let position = match self.content_fit {
-            ContentFit::None => Point::new(
-                bounds.x + (image_size.width - adjusted_fit.width) / 2.0,
-                bounds.y + (image_size.height - adjusted_fit.height) / 2.0,
-            ),
-            _ => Point::new(
-                bounds.center_x() - final_size.width / 2.0,
-                bounds.center_y() - final_size.height / 2.0,
-            ),
-        };
-
-        let drawing_bounds = Rectangle::new(position, final_size);
-
-        let render = |renderer: &mut Renderer| {
-            renderer.draw_image(
-                iced_image::Image {
-                    handle: handle.clone(),
-                    filter_method: FilterMethod::default(),
-                    rotation: Rotation::default().radians(),
-                    opacity: 1.0,
-                    snap: true,
-                },
-                drawing_bounds,
-            );
-        };
-
-        if adjusted_fit.width > bounds.width || adjusted_fit.height > bounds.height {
-            renderer.with_layer(bounds, render);
-        } else {
-            render(renderer);
-        }
+        self.content.as_widget().draw(tree, renderer, theme, style, layout, cursor, viewport);
     }
 }
 
-impl<Message, Theme, Renderer> From<FileTile> for Element<'_, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> 
+    From<FileTile<'a, Message, Theme, Renderer>> 
+    for Element<'a, Message, Theme, Renderer>
 where
-    Renderer: iced_image::Renderer<Handle = Handle>,
+    Message: 'a,
+    Theme: text::Catalog + 'a,
+    Renderer: image::Renderer<Handle = Handle> + advanced::text::Renderer + 'a,
 {
-    fn from(tile: FileTile) -> Element<'static, Message, Theme, Renderer> {
+    fn from(tile: FileTile<'a, Message, Theme, Renderer>) -> Element<'a, Message, Theme, Renderer> {
         Element::new(tile)
     }
 }
-
-mod state;

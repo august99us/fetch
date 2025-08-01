@@ -1,8 +1,7 @@
 use camino::Utf8PathBuf;
-use futures::{stream::FuturesUnordered, FutureExt};
 use iced::{task::Handle, widget::{button, column, horizontal_rule, row, text_input}, Element, Length, Pixels, Size, Task, Theme};
 
-use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area};
+use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area::{self, ResultsArea}};
 
 const SINGLE_PAD : Pixels = Pixels(5.0);
 
@@ -23,22 +22,9 @@ fn theme() -> Theme {
 pub struct Landing {
     query: Option<String>,
     page: u32,
-    files: Option<Vec<FileWithPreview>>,
+    files: Option<Vec<Utf8PathBuf>>,
+    results_area: ResultsArea,
     loading_task_handle: Option<Handle>,
-}
-
-#[derive(Clone)]
-pub struct FileWithPreview {
-    path: Utf8PathBuf,
-    preview: Option<Utf8PathBuf>,
-}
-impl FileWithPreview {
-    pub fn new(path: Utf8PathBuf) -> Self {
-        Self {
-            path,
-            preview: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -46,72 +32,53 @@ pub enum LandingMessage {
     QueryChanged(String),
     QuerySet,
     QueryFinished(Result<Vec<Utf8PathBuf>, String>),
-    PreviewCompleted(usize, Result<Option<Utf8PathBuf>, String>),
+    ResultsAreaMessage(results_area::Message),
     FileClicked(Utf8PathBuf),
+    None,
 }
 
 impl Landing {
     pub fn update(&mut self, message: LandingMessage) -> Task<LandingMessage> {
         match message {
             LandingMessage::QueryChanged(query) => {
-                self.query = Some(query);
-                Task::none()
-            },
+                        self.query = Some(query);
+                        Task::none()
+                    },
             LandingMessage::QuerySet => {
-                let ref_query = self.query.as_ref();
-                if ref_query == None || ref_query.unwrap().is_empty() {
-                    self.files = None;
-                    Task::none()
-                } else {
-                    Task::perform(run_index_query(ref_query.unwrap().to_string()), LandingMessage::QueryFinished)
-                }
-            },
-            LandingMessage::QueryFinished(files) => {
-                println!("Query finished with results: {:?}", files);
+                        let ref_query = self.query.as_ref();
+                        if ref_query == None || ref_query.unwrap().is_empty() {
+                            self.update_results(None)
+                        } else {
+                            Task::perform(run_index_query(ref_query.unwrap().to_string()), LandingMessage::QueryFinished)
+                        }
+                    },
+            LandingMessage::QueryFinished(result) => {
+                        println!("Query finished with results: {:?}", result);
 
-                // TODO: Disable spinner or loading indicator
+                        // TODO: Disable spinner or loading indicator
         
-                if files.is_err() {
-                    eprintln!("Error querying files: {}", files.as_ref().err().unwrap());
-                    self.files = None;
-                    return Task::none();
-                }
+                        if result.is_err() {
+                            eprintln!("Error querying files: {}", result.as_ref().err().unwrap());
+                            return self.update_results(None);
+                        }
 
-                self.files = Some(files.unwrap().into_iter().map(FileWithPreview::new).collect());
-
-                // Start loading previews for each file
-                let futures: FuturesUnordered<_> = FuturesUnordered::new();
-                for (i, file) in self.files.as_ref().unwrap().iter().enumerate() {
-                    futures.push(generate_or_retrieve_preview(file.path.clone())
-                        .map(move |r| LandingMessage::PreviewCompleted(i, r)));
-                }
-                let (task, handle) = Task::stream(futures).abortable();
-                self.loading_task_handle = Some(handle);
-
-                task
-            },
-            LandingMessage::PreviewCompleted(i, preview_result) => {
-                if self.files.is_none() {
-                    println!("Finished loading preview for file but no search results are stored? ignoring");
-                    return Task::none();
-                }
-                if preview_result.is_err() {
-                    eprintln!("Error generating preview for file at index {}: {}", i, preview_result.as_ref().err().unwrap());
-                    return Task::none();
-                }
-                let preview_path = preview_result.unwrap();
-                self.files.as_mut().unwrap()[i].preview = preview_path;
-                Task::none()
-            },
+                        self.update_results(Some(result.unwrap()))
+                    },
             LandingMessage::FileClicked(path) => {
-                // Handle file double click, e.g., open the file or show details
-                println!("Opening file location: {}", path);
+                        // Handle file double click, e.g., open the file or show details
+                        println!("Opening file location: {}", path);
 
-                utility::show_file_location(&path)
-                    .unwrap_or_else(|e| eprintln!("Error showing file location: {}", e));
+                        utility::show_file_location(&path)
+                            .unwrap_or_else(|e| eprintln!("Error showing file location: {}", e));
 
-                Task::none()
-            },
+                        Task::none()
+                    },
+            LandingMessage::ResultsAreaMessage(message) => {
+                        self.results_area.update(message).into()
+                    },
+            LandingMessage::None => {
+                        Task::none()
+                    },
         }
     }
 
@@ -131,14 +98,51 @@ impl Landing {
             search_button,
         ].spacing(SINGLE_PAD);
 
-        let results_area = results_area(&self.files);
+        let results_area = self.results_area.view();
 
-        column![search_row, horizontal_rule(1), results_area]
+        column![search_row, horizontal_rule(1), results_area.map(LandingMessage::ResultsAreaMessage)]
             .width(Length::Fill)
             .height(900)
             .padding(SINGLE_PAD)
             .spacing(SINGLE_PAD)
             .into()
+    }
+
+    fn update_results(&mut self, oresults: Option<Vec<Utf8PathBuf>>) -> Task<LandingMessage> {
+        self.files = oresults;
+
+        if let Some(results) = self.files.clone() {
+            self.results_area.update(results_area::Message::UpdateResults(results)).into()
+        } else {
+            self.results_area.update(results_area::Message::UpdateResults(vec![])).into()
+        }
+    }
+}
+
+impl From<results_area::Action> for Task<LandingMessage> {
+    fn from(value: results_area::Action) -> Self {
+        match value {
+            results_area::Action::LoadPreviews(requests) => {
+                // map each request to a task
+                let tasks: Vec<Task<LandingMessage>> = requests.into_iter()
+                    .map(|lpr| Task::future((async move || {
+                        // this closure calls the async fn we want and then maps the result to a message.
+                        let ro = generate_or_retrieve_preview(&lpr.path).await;
+                        match ro.transpose() {
+                            Some(r) => LandingMessage::ResultsAreaMessage(results_area::Message::UpdatePreview { 
+                                index: lpr.index, 
+                                path: lpr.path, 
+                                handle_result: r 
+                            }),
+                            None => LandingMessage::None,
+                        }
+                    })())) // extra () are to actually call the async closure for the future
+                    .collect();
+
+                Task::batch(tasks)
+            },
+            results_area::Action::None => Task::none(),
+        }
     }
 }
 

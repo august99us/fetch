@@ -52,6 +52,8 @@ impl Embeddable for PreviewedFile {
             PreviewType::Image => {
                 // TODO: make this implementation more mature, both using a better model and better code,
                 // with error handling, etc.
+
+                // this entire part should be blocking.
                 let (model, _tokenizer) = get_model_and_tokenizer().await
                     .map_err(EmbeddingError::Initialization)?;
                 let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
