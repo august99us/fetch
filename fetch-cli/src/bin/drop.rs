@@ -2,7 +2,7 @@ use std::error::Error;
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch::vector_store::lancedb_store::LanceDBStore;
+use fetch_core::vector_store::lancedb_store::LanceDBStore;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-drop")]

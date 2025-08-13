@@ -1,0 +1,18 @@
+[package]
+name = "fetch-gui"
+version = "0.0.1"
+edition = "2021"
+
+[[bin]]
+name = "fetch-gui"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+fetch-core = { path = "../fetch-core" }
+anyhow = { workspace = true }
+camino = { workspace = true }
+tokio = { workspace = true }
+
+# GUI specific dependencies
+iced = { workspace = true }

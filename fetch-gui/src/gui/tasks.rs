@@ -1,7 +1,7 @@
 use std::io;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use fetch::{app_config, file_index::{query_files::QueryFiles, FileIndexer}, previewable::PossiblyPreviewable, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, file_index::{query_files::QueryFiles, FileIndexer}, previewable::PossiblyPreviewable, vector_store::lancedb_store::LanceDBStore};
 use iced::widget::image::Handle;
 use tokio::{fs::File, io::AsyncReadExt};
 

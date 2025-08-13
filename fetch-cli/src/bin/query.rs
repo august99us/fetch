@@ -1,7 +1,7 @@
 use std::{error::Error, future::Future, pin::Pin};
 
 use clap::Parser;
-use fetch::{app_config, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]

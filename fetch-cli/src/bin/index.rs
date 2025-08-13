@@ -2,7 +2,7 @@ use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, 
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch::{app_config, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
+use fetch_core::{app_config, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{sync::Semaphore, task};
