@@ -1,12 +1,12 @@
 use camino::Utf8PathBuf;
-use iced::{task::Handle, widget::{button, column, horizontal_rule, row, text_input}, Element, Length, Pixels, Size, Task, Theme};
+use iced::{task::Handle, widget::{button, column, container, horizontal_rule, row, stack, text, text_input, TextInput}, Element, Length, Pixels, Size, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area::{self, ResultsArea}};
 
 const SINGLE_PAD : Pixels = Pixels(5.0);
 
 pub fn run_fetch_application() -> iced::Result {
-    iced::application(Landing::default, Landing::update, Landing::view)
+    iced::application(SearchPage::default, SearchPage::update, SearchPage::view)
         .title("Fetch")
         .window_size(Size::new(1075.0, 700.0))
         .theme(|_state| theme())
@@ -19,43 +19,49 @@ fn theme() -> Theme {
 }
 
 #[derive(Clone, Default)]
-pub struct Landing {
+pub struct SearchPage {
     query: Option<String>,
     page: u32,
     files: Option<Vec<Utf8PathBuf>>,
     results_area: ResultsArea,
     loading_task_handle: Option<Handle>,
+    querying_index: bool,
 }
 
 #[derive(Clone, Debug)]
-pub enum LandingMessage {
+pub enum SearchPageMessage {
     QueryChanged(String),
     QuerySet,
     QueryFinished(Result<Vec<Utf8PathBuf>, String>),
     ResultsAreaMessage(results_area::Message),
-    FileClicked(Utf8PathBuf),
     None,
 }
 
-impl Landing {
-    pub fn update(&mut self, message: LandingMessage) -> Task<LandingMessage> {
+impl SearchPage {
+    pub fn update(&mut self, message: SearchPageMessage) -> Task<SearchPageMessage> {
         match message {
-            LandingMessage::QueryChanged(query) => {
+            SearchPageMessage::QueryChanged(query) => {
                         self.query = Some(query);
                         Task::none()
                     },
-            LandingMessage::QuerySet => {
+            SearchPageMessage::QuerySet => {
+                        // Don't start a new query if already querying
+                        if self.querying_index {
+                            return Task::none();
+                        }
+                        
                         let ref_query = self.query.as_ref();
                         if ref_query == None || ref_query.unwrap().is_empty() {
                             self.update_results(None)
                         } else {
-                            Task::perform(run_index_query(ref_query.unwrap().to_string()), LandingMessage::QueryFinished)
+                            self.querying_index = true;
+                            Task::perform(run_index_query(ref_query.unwrap().to_string()), SearchPageMessage::QueryFinished)
                         }
                     },
-            LandingMessage::QueryFinished(result) => {
+            SearchPageMessage::QueryFinished(result) => {
                         println!("Query finished with results: {:?}", result);
-
-                        // TODO: Disable spinner or loading indicator
+                        
+                        self.querying_index = false;
         
                         if result.is_err() {
                             eprintln!("Error querying files: {}", result.as_ref().err().unwrap());
@@ -64,43 +70,61 @@ impl Landing {
 
                         self.update_results(Some(result.unwrap()))
                     },
-            LandingMessage::FileClicked(path) => {
-                        // Handle file double click, e.g., open the file or show details
-                        println!("Opening file location: {}", path);
-
-                        utility::show_file_location(&path)
-                            .unwrap_or_else(|e| eprintln!("Error showing file location: {}", e));
-
-                        Task::none()
-                    },
-            LandingMessage::ResultsAreaMessage(message) => {
+            SearchPageMessage::ResultsAreaMessage(message) => {
                         self.results_area.update(message).into()
                     },
-            LandingMessage::None => {
+            SearchPageMessage::None => {
                         Task::none()
                     },
         }
     }
 
-    pub fn view(&self) -> Element<'_, LandingMessage> {
-        let query_input = text_input("Enter query here...", 
-                &self.query.as_ref().unwrap_or(&"".to_string()))
-            .on_input(LandingMessage::QueryChanged)
-            .on_submit(LandingMessage::QuerySet)
+    pub fn view(&self) -> Element<'_, SearchPageMessage> {
+        let mut query_input = text_input("Enter query here...", 
+            &self.query.as_ref().unwrap_or(&"".to_string()))
             .padding(SINGLE_PAD)
             .width(Length::Fill);
-        let search_button = button("Search")
-            .on_press(LandingMessage::QuerySet)
-            .padding(SINGLE_PAD);
+        if !self.querying_index {
+            query_input = query_input
+                .on_input(SearchPageMessage::QueryChanged)
+                .on_submit(SearchPageMessage::QuerySet);
+        }
+
+        let search_button = if self.querying_index {
+            button("Searching...")
+                .padding(SINGLE_PAD)
+        } else {
+            button("Search")
+                .on_press(SearchPageMessage::QuerySet)
+                .padding(SINGLE_PAD)
+        };
 
         let search_row = row![
             query_input,
             search_button,
         ].spacing(SINGLE_PAD);
 
-        let results_area = self.results_area.view();
+        let results_area = self.results_area.view().map(SearchPageMessage::ResultsAreaMessage);
+        
+        let results_content = if self.querying_index {
+            let loading_overlay = container(
+                text("Searching...")
+                    .size(24)
+                    .color(iced::Color::WHITE)
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(container::transparent)
+            .clip(false);
 
-        column![search_row, horizontal_rule(1), results_area.map(LandingMessage::ResultsAreaMessage)]
+            stack![results_area, loading_overlay].into()
+        } else {
+            results_area
+        };
+
+        column![search_row, horizontal_rule(1), results_content]
             .width(Length::Fill)
             .height(900)
             .padding(SINGLE_PAD)
@@ -108,7 +132,9 @@ impl Landing {
             .into()
     }
 
-    fn update_results(&mut self, oresults: Option<Vec<Utf8PathBuf>>) -> Task<LandingMessage> {
+    fn update_results(&mut self, oresults: Option<Vec<Utf8PathBuf>>) -> Task<SearchPageMessage> {
+        // Ensure loading state is always cleared when updating results
+        self.querying_index = false;
         self.files = oresults;
 
         if let Some(results) = self.files.clone() {
@@ -119,27 +145,45 @@ impl Landing {
     }
 }
 
-impl From<results_area::Action> for Task<LandingMessage> {
+impl From<results_area::Action> for Task<SearchPageMessage> {
     fn from(value: results_area::Action) -> Self {
         match value {
             results_area::Action::LoadPreviews(requests) => {
                 // map each request to a task
-                let tasks: Vec<Task<LandingMessage>> = requests.into_iter()
+                let tasks: Vec<Task<SearchPageMessage>> = requests.into_iter()
                     .map(|lpr| Task::future((async move || {
                         // this closure calls the async fn we want and then maps the result to a message.
                         let ro = generate_or_retrieve_preview(&lpr.path).await;
                         match ro.transpose() {
-                            Some(r) => LandingMessage::ResultsAreaMessage(results_area::Message::UpdatePreview { 
+                            Some(r) => SearchPageMessage::ResultsAreaMessage(results_area::Message::UpdatePreview { 
                                 index: lpr.index, 
                                 path: lpr.path, 
                                 handle_result: r 
                             }),
-                            None => LandingMessage::None,
+                            None => SearchPageMessage::None,
                         }
                     })())) // extra () are to actually call the async closure for the future
                     .collect();
 
                 Task::batch(tasks)
+            },
+            results_area::Action::OpenFile(path) => {
+                Task::future(async move {
+                    // TODO: Change this back to open_file_with_default_app once testing is complete
+                    // Currently opening file location for testing double-click functionality
+                    println!("Opening file location (testing double-click): {}", path);
+                    utility::show_file_location(&path)
+                        .unwrap_or_else(|e| eprintln!("Error opening file location: {}", e));
+                    SearchPageMessage::None
+                })
+            },
+            results_area::Action::OpenFileLocation(path) => {
+                Task::future(async move {
+                    println!("Opening file location: {}", path);
+                    utility::show_file_location(&path)
+                        .unwrap_or_else(|e| eprintln!("Error showing file location: {}", e));
+                    SearchPageMessage::None
+                })
             },
             results_area::Action::None => Task::none(),
         }

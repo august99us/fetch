@@ -13,7 +13,8 @@ static PLACEHOLDER_IMAGE: LazyLock<Handle> = LazyLock::new(|| Handle::from_bytes
 
 #[derive(Clone, Default)]
 pub struct ResultsArea {
-    results: Vec<FileWithPreview>
+    results: Vec<FileWithPreview>,
+    selected_index: Option<u16>,
 }
 
 pub struct LoadPreviewRequest {
@@ -23,25 +24,25 @@ pub struct LoadPreviewRequest {
 
 pub enum Action {
     LoadPreviews(Vec<LoadPreviewRequest>),
+    OpenFile(Utf8PathBuf),
+    OpenFileLocation(Utf8PathBuf),
     None,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     UpdateResults(Vec<Utf8PathBuf>),
-    UpdatePreview {index: u16, path: Utf8PathBuf, handle_result: Result<Handle, String>},
+    UpdatePreview { index: u16, path: Utf8PathBuf, handle_result: Result<Handle, String> },
+    ResultSelected(u16),
+    FileOpened(Utf8PathBuf),
+    FileLocationOpened(Utf8PathBuf),
 }
 
 impl ResultsArea {
-    pub fn new() -> Self {
-        ResultsArea {
-            results: vec![]
-        }
-    }
-
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::UpdateResults(results) => {
+                self.selected_index = None;
                 self.results = results.into_iter()
                     .map(|p| FileWithPreview { path: p, preview: None })
                     .collect();
@@ -68,6 +69,16 @@ impl ResultsArea {
                 }
 
                 Action::None
+            },
+            Message::ResultSelected(index) => {
+                self.selected_index = Some(index);
+                Action::None
+            },
+            Message::FileOpened(path) => {
+                Action::OpenFile(path)
+            },
+            Message::FileLocationOpened(path) => {
+                Action::OpenFileLocation(path)
             }
         }
 
@@ -82,11 +93,13 @@ impl ResultsArea {
         let rows: Vec<Element<'_, Message>> = grid.into_iter()
             .map(|row| {
                 row.into_iter()
-                    .filter_map(|index| {
+                    .map(|index| {
                         if index >= 0 {
-                            file_tile_custom(Some(&self.results[index as usize])).into()
+                            let idx = index as u16;
+                            let selected = self.selected_index == Some(idx);
+                            file_tile(&self.results[index as usize], idx, selected)
                         } else {
-                            file_tile_custom(None).into()
+                            text("").into()
                         }
                     })
                     .collect::<Vec<_>>()
@@ -126,22 +139,23 @@ impl<E> From<Result<Handle, E>> for HandleOrBroken {
     }
 }
 
-fn file_tile_custom(item: Option<&FileWithPreview>) -> Element<'_, Message> {
-    match item {
-        Some(fwp) => {
-            let file_name = fwp.path.file_name().unwrap_or(&"<invalid filename>");
-            if let Some(handle) = &fwp.preview {
-                match handle {
-                    HandleOrBroken::Handle(handle) => FileTile::new(file_name, handle).into(),
-                    // TODO: replace with broken preview image
-                    HandleOrBroken::Broken => FileTile::new(file_name, &PLACEHOLDER_IMAGE).into(),
-                }
-            } else {
-                FileTile::new(file_name, &PLACEHOLDER_IMAGE).into()
-            }
-        },
-        None => text("").into()
-    }
+fn file_tile<'a>(item: &'a FileWithPreview, index: u16, selected: bool) -> Element<'a, Message> {
+    let path = &item.path;
+    let file_name = path.file_name().unwrap_or(&"<invalid filename>").to_string();
+    
+    let tile = if let Some(handle) = &item.preview {
+        match handle {
+            HandleOrBroken::Handle(handle) => FileTile::new(file_name, handle, selected),
+            // TODO: replace with broken preview image
+            HandleOrBroken::Broken => FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected),
+        }
+    } else {
+        FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected)
+    };
+    
+    tile.on_click(move || Message::ResultSelected(index))
+        .on_double_click(move || Message::FileOpened(path.clone()))
+        .into()
 }
 
 fn layout_tile_grid(num_items: usize, cont_size: (Pixels, Pixels)) -> Vec<Vec<i16>> {

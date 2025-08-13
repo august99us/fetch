@@ -35,3 +35,31 @@ pub fn show_file_location(path: &Utf8Path) -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+pub fn open_file_with_default_app(path: &Utf8Path) -> Result<(), anyhow::Error> {
+    #[cfg(target_os = "windows")]
+    Command::new("cmd")
+        .args(["/c", "start", "", &path.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    #[cfg(target_os = "macos")]
+    Command::new("open")
+        .arg(path.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    #[cfg(target_os = "linux")]
+    Command::new("xdg-open")
+        .arg(path.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    Ok(())
+}
