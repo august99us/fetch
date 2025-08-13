@@ -8,6 +8,20 @@ static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_pa
             .expect("Local data directory is not a valid UTF-8 path")
             .join("fetch"));
 
+/// Gets the default directory path for storing file indices.
+/// 
+/// This function reads from the data configuration file and replaces the `%%AppDataDirectory%%`
+/// placeholder with the actual application data directory path. The directory will be created
+/// if it doesn't already exist.
+/// 
+/// # Returns
+/// 
+/// A [`Utf8PathBuf`] representing the path to the default index directory.
+/// 
+/// # Panics
+/// 
+/// Panics if the data configuration cannot be loaded, the default_index_directory setting
+/// is missing, or if there are filesystem errors creating the directory.
 pub fn get_default_index_directory() -> Utf8PathBuf {
     let data_config = get_data_config().expect("Failed to load data config");
 
@@ -22,6 +36,20 @@ pub fn get_default_index_directory() -> Utf8PathBuf {
     folder
 }
 
+/// Gets the default directory path for storing file previews.
+/// 
+/// This function reads from the data configuration file and replaces the `%%AppDataDirectory%%`
+/// placeholder with the actual application data directory path. The directory will be created
+/// if it doesn't already exist.
+/// 
+/// # Returns
+/// 
+/// A [`Utf8PathBuf`] representing the path to the default preview directory.
+/// 
+/// # Panics
+/// 
+/// Panics if the data configuration cannot be loaded, the default_preview_directory setting
+/// is missing, or if there are filesystem errors creating the directory.
 pub fn get_default_preview_directory() -> Utf8PathBuf {
     let data_config = get_data_config().expect("Failed to load data config");
 
@@ -36,6 +64,20 @@ pub fn get_default_preview_directory() -> Utf8PathBuf {
     folder
 }
 
+/// Gets the file path for the configuration file defining the configuration settings 
+/// for the daemon process that watches for changes in the filesystem.
+/// 
+/// This function reads from the daemon configuration file and replaces the `%%AppDataDirectory%%`
+/// placeholder with the actual application data directory path.
+/// 
+/// # Returns
+/// 
+/// A [`Utf8PathBuf`] representing the path to the watchlist file.
+/// 
+/// # Panics
+/// 
+/// Panics if the daemon configuration cannot be loaded or the watchlist_file setting
+/// is missing from the configuration.
 pub fn get_watchlist_file_path() -> Utf8PathBuf {
     let daemon_config = get_daemon_config().expect("Failed to load daemon config");
     println!("{}", daemon_config.get_string("watchlist_file")

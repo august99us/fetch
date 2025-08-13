@@ -6,7 +6,10 @@ use crate::{embeddable::Embeddable, previewable::{PossiblyPreviewable, PreviewEr
 
 use super::FileIndexer;
 
-/// index
+/// Describes an object that understands how to semantically index files.
+/// 
+/// This trait provides methods for indexing files by first generating previews,
+/// then creating embeddings from those previews, and finally storing them for later retrieval.
 pub trait IndexFiles {
     /// Index a file, first attempting to load it, then generating a preview for the file, then embedding it, and
     /// finally indexing it into a vector store

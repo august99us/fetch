@@ -160,6 +160,22 @@ fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<T
     Ok(img)
 }
 
+/// Normalizes a tensor by dividing it by its L2 norm.
+/// 
+/// This function calculates the L2 norm (Euclidean norm) of the input tensor and divides
+/// the tensor by this norm, effectively normalizing it to unit length.
+/// 
+/// # Arguments
+/// 
+/// * `v` - The input tensor to normalize
+/// 
+/// # Returns
+/// 
+/// A normalized tensor with the same shape as the input, or an error if the operation fails.
+/// 
+/// # Errors
+/// 
+/// Returns an error if tensor operations (square, sum, sqrt, or broadcast division) fail.
 pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, anyhow::Error> {
     let l2_norm = v.sqr()?.sum_keepdim(D::Minus1)?.sqrt()?;
     Ok(v.broadcast_div(&l2_norm).map_err(Box::new)?)

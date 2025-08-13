@@ -4,8 +4,15 @@ use crate::{embeddable::Embeddable, vector_store::{IndexVector, QueryVectorKeys}
 
 use super::FileIndexer;
 
+/// Describes an object that understands how to perform semantic queries against indexed files.
+/// 
+/// This trait provides methods for finding files that are semantically similar to a given
+/// text description by converting the description to an embedding and querying the index by
+/// similarity to that embedding.
 pub trait QueryFiles {
+    /// Query for files matching description provided, returning a default number of results (currently 20).
     async fn query(&self, file_description: &str) -> Result<FileQuerying::Result, FileQuerying::Error>;
+    /// Query for files matching description provided, returning a given number of results (if they exist).
     async fn query_n(&self, file_description: &str, num_results: u32) -> Result<FileQuerying::Result, FileQuerying::Error>;
 }
 
