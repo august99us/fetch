@@ -159,7 +159,7 @@ impl IndexVector for LanceDBStore {
 }
 
 impl QueryVectorKeys for LanceDBStore {
-    // Query 15 by default
+    // Query all results by default
     fn query_keys(&self, vector: Vec<f32>) -> impl Future<Output = Result<Vec<QueryKeyResult>, VectorStoreError>> {
         self.query_n_keys(vector, 0, 0)
     }

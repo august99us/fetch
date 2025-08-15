@@ -3,6 +3,9 @@ name = "fetch-core"
 version = "0.0.1"
 edition = "2021"
 
+[features]
+default = ["psd"]
+
 [dependencies]
 # Core dependencies from workspace
 anyhow = { workspace = true }
@@ -38,3 +41,4 @@ crossbeam-channel = { workspace = true }
 chrono = { workspace = true }
 normalize-path = { workspace = true }
 uuid = { workspace = true }
+psd = { version = "0.3.5", optional = true }

@@ -3280,6 +3280,7 @@ dependencies = [
  "normalize-path",
  "notify",
  "notify-debouncer-full",
+ "psd",
  "thiserror 2.0.14",
  "tokenizers",
  "tokio",
@@ -7053,6 +7054,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "psd"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a25f9b8cfffd65d911baf31a033239f7a0facb755faa2481575b70db5dc9195"
+dependencies = [
+ "thiserror 1.0.69",
 ]
 
 [[package]]
