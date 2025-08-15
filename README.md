@@ -20,7 +20,7 @@ All binaries should have `--help` dialogues for more info.
 | Binary | Description |
 | --- | --- |
 | index | Indexes files or entire directories into the default data directory. |
-| query | Queries the default data directory for files that fit the query. |
+| query | Queries the default data directory for files that fit the query. Supports pagination with --page and --num-results flags. |
 | file_daemon | Starts daemon service to track file changes in a directory. |
 | drop | Development binary. Drops an entire data directory. |
 

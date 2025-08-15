@@ -14,7 +14,10 @@ struct Args {
     verbose: bool,
     /// String to query files with
     query: String,
-    /// The number of query results to return, default 15
+    /// Page number for results (1-based), default 1
+    #[arg(short, long)]
+    page: Option<u32>,
+    /// The number of query results to return per page, default 20
     #[arg(short, long)]
     num_results: Option<u32>,
 }
@@ -32,9 +35,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let result_future: Pin<Box<dyn Future<Output = Result<FileQuerying::Result, FileQuerying::Error>>>>;
     if let Some(n) = args.num_results {
-        result_future = Box::pin(file_indexer.query_n(&args.query, n));
+        result_future = Box::pin(file_indexer.query_n(&args.query, n, args.page.unwrap_or(1)));
     } else {
-        result_future = Box::pin(file_indexer.query(&args.query));
+        result_future = Box::pin(file_indexer.query(&args.query, args.page));
     }
 
     let results = result_future.await

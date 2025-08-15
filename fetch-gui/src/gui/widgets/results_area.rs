@@ -11,9 +11,9 @@ const TILE_HEIGHT: Pixels = Pixels(150.0);
 
 static PLACEHOLDER_IMAGE: LazyLock<Handle> = LazyLock::new(|| Handle::from_bytes(PLACEHOLDER_IMAGE_BYTES));
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ResultsArea {
-    results: Vec<FileWithPreview>,
+    results: Vec<FileWithHandle>,
     selected_index: Option<u16>,
 }
 
@@ -44,7 +44,7 @@ impl ResultsArea {
             Message::UpdateResults(results) => {
                 self.selected_index = None;
                 self.results = results.into_iter()
-                    .map(|p| FileWithPreview { path: p, preview: None })
+                    .map(|p| FileWithHandle { path: p, preview: None })
                     .collect();
 
                 if self.results.is_empty() {
@@ -86,7 +86,7 @@ impl ResultsArea {
 
     pub fn view(&self) -> Element<'_, Message> {
         if self.results.is_empty() {
-            return iced::widget::text("No results to display").center().into();
+            return iced::widget::text("No results to display").width(Length::Fill).height(Length::Fill).center().into();
         }
         // Temporary 5x3
         let grid = layout_tile_grid(self.results.len(), (TILE_WIDTH * 5.0, TILE_HEIGHT * 4.0));
@@ -118,13 +118,13 @@ impl ResultsArea {
 }
 
 // Private methods and structs
-#[derive(Clone)]
-struct FileWithPreview {
+#[derive(Clone, Debug)]
+struct FileWithHandle {
     path: Utf8PathBuf,
     preview: Option<HandleOrBroken>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum HandleOrBroken {
     Handle(Handle),
     Broken,
@@ -139,7 +139,7 @@ impl<E> From<Result<Handle, E>> for HandleOrBroken {
     }
 }
 
-fn file_tile<'a>(item: &'a FileWithPreview, index: u16, selected: bool) -> Element<'a, Message> {
+fn file_tile<'a>(item: &'a FileWithHandle, index: u16, selected: bool) -> Element<'a, Message> {
     let path = &item.path;
     let file_name = path.file_name().unwrap_or(&"<invalid filename>").to_string();
     

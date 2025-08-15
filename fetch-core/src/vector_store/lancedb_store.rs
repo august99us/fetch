@@ -161,13 +161,13 @@ impl IndexVector for LanceDBStore {
 impl QueryVectorKeys for LanceDBStore {
     // Query 15 by default
     fn query_keys(&self, vector: Vec<f32>) -> impl Future<Output = Result<Vec<QueryKeyResult>, VectorStoreError>> {
-        self.query_n_keys(vector, 15)
+        self.query_n_keys(vector, 0, 0)
     }
 
-    async fn query_n_keys(&self, vector: Vec<f32>, num_results: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError> {
+    async fn query_n_keys(&self, vector: Vec<f32>, num_results: u32, offset: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError> {
         verify_valid_vector_len(self, &vector)?;
 
-        let query = self.table.query()
+        let mut query = self.table.query()
             // This normally returns errors because lancedb automatically uses an embedding model if registered
             // to convert a query into a vector. However without a registered model lancedb just expects the
             // actual vector to be provided here for the query, which is what I have done. Therefore this should
@@ -176,8 +176,12 @@ impl QueryVectorKeys for LanceDBStore {
             .distance_type(DistanceType::Dot)
             .column(VECTOR_COLUMN)
             .select(Select::Columns(vec![String::from(KEY_COLUMN)]))
+            .offset(offset as usize);
+
+        if num_results > 0 {
             // u32 -> usize cast, should always be fine
-            .limit(num_results.try_into().unwrap());
+            query = query.limit(num_results.try_into().unwrap());
+        }
         let mut result_stream = query.execute().await
             .map_err(|e| VectorStoreError::Query { source: e.into() })?;
 

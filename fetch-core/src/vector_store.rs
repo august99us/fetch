@@ -78,7 +78,7 @@ pub struct QueryKeyResult {
 /// This trait provides methods for finding vectors that are similar to a given query vector,
 /// returning the keys of matching records along with their similarity distances.
 pub trait QueryVectorKeys {
-    /// Query for similar vectors and return their keys with similarity distances.
+    /// Query for all similar vectors and return their keys with similarity distances.
     /// 
     /// Returns a default number of results determined by the implementation.
     /// 
@@ -98,12 +98,13 @@ pub trait QueryVectorKeys {
     /// 
     /// * `vector` - The query vector to find similarities for
     /// * `num_results` - The maximum number of results to return
+    /// * `offset` - The offset for pagination, determining which number result to start from
     /// 
     /// # Returns
     /// 
     /// A vector of `QueryKeyResult` containing similar vectors and their distances,
     /// or a `VectorStoreError` if the query failed.
-    async fn query_n_keys(&self, vector: Vec<f32>, num_results: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError>;
+    async fn query_n_keys(&self, vector: Vec<f32>, num_results: u32, offset: u32) -> Result<Vec<QueryKeyResult>, VectorStoreError>;
 }
 
 pub mod lancedb_store;
