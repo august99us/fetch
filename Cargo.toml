@@ -10,41 +10,5 @@ resolver = "2"
 # Shared dependencies
 anyhow = { version = "1.0.98", features = ["backtrace"] }
 camino = "1.1.9"
-tokio = { version = "1.44.0", features = ["signal", "sync"] }
-thiserror = "2.0.12"
-
-# ML/Vector dependencies
-candle-core = { version = "0.9.0-alpha.4", features = ["cuda"], git = "https://github.com/huggingface/candle.git" }
-candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.0-alpha.4", features = ["cuda"] }
-candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.9.0-alpha.4", features = ["cuda"] }
-tokenizers = "0.21.1"
-hf-hub = { version = "0.4" }
-lancedb = "0.21.1"
-arrow = "55.1"
-arrow-array = "55.1"
-arrow-schema = "55.1"
-
-# File system and config
-config = "0.15.11"
-dirs = "6.0.0"
-notify = "8.0.0"
-notify-debouncer-full = { version = "0.5.0", features = ["crossbeam-channel"] }
-image = "0.25.6"
-
-# Async and concurrency
 futures = "0.3.31"
-tokio-retry = "0.3.0"
-tokio-util = "0.7.15"
-crossbeam-channel = "0.5.15"
-
-# Utilities
-chrono = "0.4"
-normalize-path = "0.2.1"
-uuid = { version = "1.16.0", features = ["v4"] }
-
-# CLI dependencies
-clap = { version = "4.5.32", features = ["derive"] }
-indicatif = "0.17.11"
-
-# GUI dependencies
-iced = { version = "0.14.0-dev", git = "https://github.com/iced-rs/iced.git", features = ["image", "tokio", "advanced"] }
+tokio = { version = "1.44.0", features = ["signal", "sync"] }

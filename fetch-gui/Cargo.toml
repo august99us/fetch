@@ -7,12 +7,16 @@ edition = "2021"
 name = "fetch-gui"
 path = "src/main.rs"
 
+[features]
+cuda = ["fetch-core/cuda"]
+
 [dependencies]
 # Workspace dependencies
 fetch-core = { path = "../fetch-core" }
+
 anyhow = { workspace = true }
 camino = { workspace = true }
 tokio = { workspace = true }
 
-# GUI specific dependencies
-iced = { workspace = true }
+# GUI-specific dependencies
+iced = { version = "0.14.0-dev", git = "https://github.com/iced-rs/iced.git", features = ["image", "tokio", "advanced"] }

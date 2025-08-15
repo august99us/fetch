@@ -19,19 +19,23 @@ path = "src/bin/drop.rs"
 name = "fetch-daemon"
 path = "src/bin/file_daemon.rs"
 
+[features]
+cuda = ["fetch-core/cuda"]
+
 [dependencies]
 # Workspace dependencies
 fetch-core = { path = "../fetch-core" }
+
 anyhow = { workspace = true }
 camino = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
 
-# CLI specific dependencies
-clap = { workspace = true }
-indicatif = { workspace = true }
-normalize-path = { workspace = true }
-futures = { workspace = true }
-crossbeam-channel = { workspace = true }
-notify = { workspace = true }
-notify-debouncer-full = { workspace = true }
-tokio-util = { workspace = true }
+# CLI-specific dependencies
+clap = { version = "4.5.32", features = ["derive"] }
+crossbeam-channel = "0.5.15"
+indicatif = "0.17.11"
+normalize-path = "0.2.1"
+notify = "8.0.0"
+notify-debouncer-full = { version = "0.5.0", features = ["crossbeam-channel"] }
+tokio-util = "0.7.15"
