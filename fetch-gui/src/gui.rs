@@ -164,7 +164,7 @@ impl SearchPage {
         }
 
         let page_info = column![vertical_space().height(Length::Fixed(2.0)),
-            text(format!("Page {}", self.page.0)).size(18)];
+            text(format!("Page {}", u32::from(self.page))).size(14)];
 
         let next_text = text("▶").size(14).center();
         let mut next_button = button(next_text)
