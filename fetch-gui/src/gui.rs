@@ -11,7 +11,7 @@ pub fn run_fetch_application() -> iced::Result {
     let mut settings = iced::Settings::default();
     let fonts = vec![Cow::from(include_bytes!("../artifacts/fonts/Inter/Inter_18pt-Regular.ttf"))];
     settings.fonts = fonts;
-    settings.default_font = Font::with_name("Comic Sans MS");
+    settings.default_font = Font::with_name("Inter");
 
     iced::application(SearchPage::default, SearchPage::update, SearchPage::view)
         .title("Fetch")
@@ -164,7 +164,7 @@ impl SearchPage {
         }
 
         let page_info = column![vertical_space().height(Length::Fixed(2.0)),
-            text(format!("Page {}", self.page.0)).size(14)];
+            text(format!("Page {}", self.page.0)).size(18)];
 
         let next_text = text("▶").size(14).center();
         let mut next_button = button(next_text)
