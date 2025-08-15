@@ -141,7 +141,7 @@ impl<E> From<Result<Handle, E>> for HandleOrBroken {
 
 fn file_tile<'a>(item: &'a FileWithHandle, index: u16, selected: bool) -> Element<'a, Message> {
     let path = &item.path;
-    let file_name = path.file_name().unwrap_or(&"<invalid filename>").to_string();
+    let file_name = path.file_name().unwrap_or("<invalid filename>").to_string();
     
     let tile = if let Some(handle) = &item.preview {
         match handle {
@@ -164,6 +164,7 @@ fn layout_tile_grid(num_items: usize, cont_size: (Pixels, Pixels)) -> Vec<Vec<i1
     let mut grid = vec![vec![0; n_width]; n_height];
 
     let mut index = 0;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..n_height {
         for j in 0..n_width {
             if index < num_items {

@@ -40,7 +40,9 @@ pub async fn generate_or_retrieve_preview(path: &Utf8Path) -> Result<Option<Hand
 }
 
 fn map_io_error_to_string(e: io::Error) -> String {
+    #[allow(clippy::match_single_binding)]
     match e.kind() {
+        // could include more specific stuff here later
         _ => "IO Error".to_string(),
     }
 }

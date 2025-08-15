@@ -76,7 +76,7 @@ pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, Pr
     let preview_path = retrieve_preview_directory().join(preview_filename);
     if preview_path.is_file() {
         let preview_file = File::open(&preview_path).await
-            .expect(format!("Could not open preview file even though .is_file() succeeded: {}", preview_path).as_str());
+            .unwrap_or_else(|_| panic!("Could not open preview file even though .is_file() succeeded: {}", preview_path));
         if preview_creation_after_file_modification(&file, &preview_file).await
             .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })? {
             return Ok(Some(preview_path));

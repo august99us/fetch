@@ -17,7 +17,7 @@ pub fn show_file_location(path: &Utf8Path) -> Result<(), anyhow::Error> {
     #[cfg(target_os = "macos")]
     let res = Command::new("open")
         .arg("-R")
-        .arg(path.to_string())
+        .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -27,7 +27,7 @@ pub fn show_file_location(path: &Utf8Path) -> Result<(), anyhow::Error> {
     // TODO: use dbus-send?
     Command::new("nautilus")
         .arg("--select")
-        .arg(path.to_string())
+        .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -47,7 +47,7 @@ pub fn open_file_with_default_app(path: &Utf8Path) -> Result<(), anyhow::Error> 
 
     #[cfg(target_os = "macos")]
     Command::new("open")
-        .arg(path.to_string())
+        .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -55,7 +55,7 @@ pub fn open_file_with_default_app(path: &Utf8Path) -> Result<(), anyhow::Error> 
 
     #[cfg(target_os = "linux")]
     Command::new("xdg-open")
-        .arg(path.to_string())
+        .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

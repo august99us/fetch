@@ -32,6 +32,7 @@ pub struct PreviewedFile {
 ///    by default, or through some kind of installed plugin for the preview system - QuickLook on
 ///    OS X, Preview Handler on Windows, etc)
 /// 2) whether Fetch has a default condenser for that type of file.
+/// 
 /// The OS provided preview system will always be preferred over the Fetch defaults, to better
 /// facilitate the ability of the program to reuse the user's choices previously installed on the
 /// operating system.
@@ -76,13 +77,11 @@ impl PossiblyPreviewable for Utf8Path {
 
         let extension = self.extension().unwrap_or("");
 
-        let preview_path;
-
-        if cache::os::has_generator_for_type(extension) {
-            preview_path = cache::os::generate_preview(self).await?;
+        let preview_path = if cache::os::has_generator_for_type(extension) {
+            cache::os::generate_preview(self).await?
         } else {
-            preview_path = cache::default::generate_preview(self).await?;
-        }
+            cache::default::generate_preview(self).await?
+        };
 
         Ok(preview_path.map(|pp| PreviewedFile {
             path: self.to_path_buf(),

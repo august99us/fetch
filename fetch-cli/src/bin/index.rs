@@ -119,6 +119,7 @@ fn clean_paths(paths: Vec<PathBuf>) -> Vec<Utf8PathBuf> {
 /// 1) files = path.is_file() is true
 /// 2) folders = path.is_dir() is true
 /// 3) unknown = neither is true
+/// 
 /// Returns classified paths in a struct
 struct ClassifiedPaths {
     pub files: Vec<PathBuf>,

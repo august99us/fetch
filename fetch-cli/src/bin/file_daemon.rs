@@ -56,7 +56,7 @@ async fn main() -> Result<(), ()>{
     let mut handles = Vec::with_capacity(worker_count);
     let cancellation_token = CancellationToken::new();
 
-    for i in (0..worker_count) {
+    for i in 0..worker_count {
         println!("starting worker {i}...");
         let rx_clone = rx.clone();
         let token_clone = cancellation_token.clone();
@@ -127,17 +127,17 @@ async fn handle_event<I: IndexFiles + QueryFiles>(file_indexer: &I, debounced_ev
                 .expect("Expected path to be valid UTF-8");
             let second_file_path = debounced_event.event.paths.get(1)
                 .map(|p| <&Utf8Path>::try_from(p.as_path()).expect("Expected path to be valid UTF-8"));
-            if second_file_path.is_some() {
-                println!("Two paths found. File renamed: {:?} to {:?}", first_file_path, second_file_path.unwrap());
+            if let Some(second_file_path) = second_file_path {
+                println!("Two paths found. File renamed: {:?} to {:?}", first_file_path, second_file_path);
                 let clear_future = file_indexer.clear(first_file_path);
-                let index_future = file_indexer.index(second_file_path.unwrap());
+                let index_future = file_indexer.index(second_file_path);
                 match clear_future.await {
                     Ok(_) => println!("File cleared from index: {first_file_path}"),
                     Err(e) => eprintln!("Error clearing file {first_file_path}: {e:?}"),
                 }
                 match index_future.await {
-                    Ok(_) => println!("File indexed successfully: {:?}", second_file_path.unwrap()),
-                    Err(e) => eprintln!("Error indexing file {}: {:?}", second_file_path.unwrap(), e),
+                    Ok(_) => println!("File indexed successfully: {:?}", second_file_path),
+                    Err(e) => eprintln!("Error indexing file {}: {:?}", second_file_path, e),
                 }
             } else {
                 println!("File renamed: {first_file_path:?}. Unknown whether this is the 'to' or 'from' name.");

@@ -7,17 +7,14 @@ use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, Query
 
 use super::{IndexVector, QueryKeyResult, QueryVectorKeys, VectorStoreError};
 
-/// Implements a preview storage index utilizing a local file system LanceDB instance
-/// under the hood.
-/// Provides the IndexPreview and QuerySimilarFiles traits through that LanceDB backend.
-/// 
-/// Instantiate this 
-
 const TABLE_NAME: &str = "vector_index";
 const KEY_COLUMN: &str = "key";
 const VECTOR_COLUMN: &str = "vector";
 const SEQUENCE_NUMBER_COLUMN: &str = "sequence_number";
 
+/// Implements a vector storage index utilizing a local file system LanceDB instance
+/// under the hood.
+/// Provides the IndexVector and QueryVectorKeys traits through that LanceDB backend.
 #[derive(Clone)]
 pub struct LanceDBStore {
     db: Connection,
@@ -231,7 +228,7 @@ impl QueryVectorKeys for LanceDBStore {
 
 /// Common code to verify that a vector argument has the correct lenght to interact with vectors
 /// stored in a particular instance of LanceDBStore
-fn verify_valid_vector_len(store: &LanceDBStore, vector: &Vec<f32>) -> Result<(), VectorStoreError> {
+fn verify_valid_vector_len(store: &LanceDBStore, vector: &[f32]) -> Result<(), VectorStoreError> {
     // converting u32 -> usize should always work
     if vector.len() != store.vector_len as usize {
         // converting usize -> u32, should always be functional unless an absurdly sized vector is provided

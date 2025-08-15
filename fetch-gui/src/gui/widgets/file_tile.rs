@@ -1,6 +1,6 @@
 // TODO: organize iced imports
 use std::{slice, time::{Duration, Instant}};
-use iced::{advanced::{self, graphics::core::Rectangle as CoreRectangle, image::{self, Handle}, layout, mouse, renderer::{self, Quad}, widget::{tree, Widget}, Clipboard, Layout, Shell}, alignment::Horizontal, widget::{column, text}, Background, Border, Color, Element, Event, Length, Rectangle, Size, Theme};
+use iced::{advanced::{self, graphics::core::Rectangle as CoreRectangle, image::{self, Handle}, layout, mouse, renderer::{self, Quad}, widget::{tree, Widget}, Clipboard, Layout, Shell}, alignment::Horizontal, widget::{column, text}, Element, Event, Length, Rectangle, Size};
 
 use crate::gui::SINGLE_PAD;
 use state::{State, Status};

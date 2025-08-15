@@ -1,7 +1,7 @@
 use std::{borrow::Cow, ops::{AddAssign, SubAssign}};
 
 use camino::Utf8PathBuf;
-use iced::{font, task::Handle, widget::{button, column, container, horizontal_rule, horizontal_space, row, stack, text, text_input, vertical_space, TextInput}, Alignment, Element, Font, Length, Pixels, Size, Task, Theme};
+use iced::{task::Handle, widget::{button, column, container, horizontal_rule, horizontal_space, row, stack, text, text_input, vertical_space}, Alignment, Element, Font, Length, Pixels, Size, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area::{self, ResultsArea}};
 
@@ -107,7 +107,7 @@ impl SearchPage {
 
         // Search row /////////////////////
         let mut query_input = text_input("Enter query here...", 
-            &self.query.as_ref().unwrap_or(&"".to_string()))
+            self.query.as_ref().unwrap_or(&"".to_string()))
             .padding(SINGLE_PAD)
             .width(Length::Fill);
         if !global_disable {
@@ -237,8 +237,9 @@ impl From<results_area::Action> for Task<SearchPageMessage> {
             results_area::Action::LoadPreviews(requests) => {
                 // map each request to a task
                 let tasks: Vec<Task<SearchPageMessage>> = requests.into_iter()
-                    .map(|lpr| Task::future((async move || {
-                        // this closure calls the async fn we want and then maps the result to a message.
+                    .map(|lpr| Task::future(async move {
+                        // this block calls the async fn we want and then maps the result to a message.
+                        // LPRs are consumed anyway so moving into the async closure is fine
                         let ro = generate_or_retrieve_preview(&lpr.path).await;
                         match ro.transpose() {
                             Some(r) => SearchPageMessage::ResultsAreaMessage(
@@ -249,7 +250,7 @@ impl From<results_area::Action> for Task<SearchPageMessage> {
                                 }),
                             None => SearchPageMessage::None,
                         }
-                    })())) // extra () are to actually call the async closure for the future
+                    }))
                     .collect();
 
                 Task::batch(tasks)

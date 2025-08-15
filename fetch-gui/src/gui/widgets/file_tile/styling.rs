@@ -47,18 +47,18 @@ pub fn style(theme: &Theme, status: &Status) -> Style {
     match status {
         Status::Default => Style {
             background: palette.background.base.color.into(),
-            text_color: palette.background.base.text.into(),
-            border: border(palette.background.weak.color.into()),
+            text_color: palette.background.base.text,
+            border: border(palette.background.weak.color),
         },
         Status::Hovered => Style {
             background: palette.background.strong.color.into(),
-            text_color: palette.background.strong.text.into(),
-            border: border(palette.background.strongest.color.into()),
+            text_color: palette.background.strong.text,
+            border: border(palette.background.strongest.color),
         },
         Status::Selected => Style {
             background: palette.background.strongest.color.into(),
-            text_color: palette.background.strongest.text.into(),
-            border: border(palette.primary.weak.color.into()),
+            text_color: palette.background.strongest.text,
+            border: border(palette.primary.weak.color),
         },
     }
 }

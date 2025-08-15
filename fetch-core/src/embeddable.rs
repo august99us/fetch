@@ -59,8 +59,8 @@ impl Embeddable for PreviewedFile {
                 let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
                     // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
                     .map_err(|e| EmbeddingError::IO { path: self.preview_path.to_string(), source: e })?;
-                let mut images = vec![];
-                images.push(image);
+
+                let images = vec![image];
                 let images = Tensor::stack(&images, 0)
                     .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Preparing pixel values", source: e.into() })?;
 
