@@ -1,11 +1,14 @@
-use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, time::Duration};
+use std::{collections::HashSet, error::Error, io::Read, path::{self, PathBuf}, sync::Arc, time::Duration};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
 use fetch_core::{app_config, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
-use tokio::{sync::Semaphore, task};
+use tokio::{runtime, sync::Semaphore, task};
+
+#[cfg(feature = "tracing")]
+use fetch_cli::utility::print_metrics;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-index")]
@@ -29,72 +32,119 @@ struct Args {
     paths: Vec<PathBuf>,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+fn main() -> Result<(), anyhow::Error> {
+    #[cfg(feature = "tracing")]
+    console_subscriber::init();
+
     let args = Args::parse();
-    let classified_paths = classify_paths(args.paths);
-    let mut files = classified_paths.files;
 
-    explore_directories(classified_paths.folders, &mut files, args.recursive);
+    let rt = runtime::Builder::new_multi_thread()
+        // Worker threads do not necessarily determine how many blocking tasks can be spawned.
+        // Blocking tasks in tokio include stuff like io tasks. Limiting the number of blocking tasks
+        // will also limit those io tasks in the same pool as the actual cpu blocking tasks Previewable
+        // and Embeddable need, which run for much longer. It would be better to run those in rayon
+        // or just run a maximum of 4 indexing jobs at once, using a semaphore.
+        // .worker_threads(args.jobs)
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime");
 
-    let files = clean_paths(files);
-    let unknown = clean_paths(classified_paths.unknown);
+    let result = rt.block_on(async move {
+        let classified_paths = classify_paths(args.paths);
+        let mut files = classified_paths.files;
 
-    if files.is_empty() {
-        println!("No files to index! Goodbye.");
-        return Ok(());
-    }
+        explore_directories(classified_paths.folders, &mut files, args.recursive);
 
-    if !args.force {
-        loop {
-            println!("{} files discovered and queued for indexing - confirm? (Y/N)", files.len());
-            let mut confirmation = String::new();
-            std::io::stdin().read_line(&mut confirmation).expect("Failed to read line");
-            
-            // Trim the confirmation to remove any extra whitespace or newline characters
-            let confirmation = confirmation.trim();
-            match confirmation {
-                "Y" | "y" | "yes" | "Yes" => break,
-                "N" | "n" | "no" | "No" => {
-                    println!("Aborting...");
-                    return Ok(());
-                },
-                _ => println!("Unrecognized input entered. Please try again."),
-            }
-        } 
-        println!("Proceeding with indexing {} files.", files.len())
-    } else {
-        println!("{} files discovered and queued for indexing.", files.len());
-    }
+        let files = clean_paths(files);
+        // files classified as unknown are likely paths that were deleted and need to be cleared
+        let unknown = clean_paths(classified_paths.unknown);
 
-    let data_dir = app_config::get_default_index_directory();
-    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
-    // TODO: unwrap error handling
-    let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));
-    let files = files.into_iter().map(Arc::new).collect();
-
-    println!("Indexing files into index stored in the directory {}", data_dir.as_str());
-
-    let results = spawn_index_jobs(file_indexer, files, args.jobs).await;
-
-    // TODO: run necessary processing for the "unknown" vector, the list of paths that are not files or directories or do not exist
-
-    let mut success = 0;
-    let mut fail = 0;
-    for result in results {
-        if let Ok(()) = result {
-            success += 1;
-        } else {
-            fail += 1;
+        if files.is_empty() && unknown.is_empty() {
+            println!("Nothing to do! Goodbye.");
+            return Ok(());
         }
+
+        if !args.force {
+            loop {
+                println!("{} file(s) discovered.\n\
+                    {} queued for indexing.\n\
+                    {} queued for clearing.\n\
+                    Confirm? (Y/N)",
+                    files.len() + unknown.len(),
+                    files.len(),
+                    unknown.len());
+                let mut confirmation = String::new();
+                std::io::stdin().read_line(&mut confirmation).expect("Failed to read line");
+                
+                // Trim the confirmation to remove any extra whitespace or newline characters
+                let confirmation = confirmation.trim();
+                match confirmation {
+                    "Y" | "y" | "yes" | "Yes" => break,
+                    "N" | "n" | "no" | "No" => {
+                        println!("Aborting...");
+                        return Ok(());
+                    },
+                    _ => println!("Unrecognized input entered. Please try again."),
+                }
+            } 
+            println!("Proceeding with indexing {} files.", files.len())
+        } else {
+            println!("{} files discovered.\n\
+                {} queued for indexing.\n\
+                {} queued for clearing.",
+                files.len() + unknown.len(),
+                files.len(),
+                unknown.len());
+        }
+
+        let data_dir = app_config::get_default_index_directory();
+        let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
+        // TODO: unwrap error handling
+        let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));
+
+        println!("Indexing {} files into index stored in the directory {}", files.len(), data_dir.as_str());
+        let iresults = spawn_index_jobs(file_indexer.clone(), files, args.jobs).await;
+        let mut isuccess = 0;
+        let mut ifail = 0;
+        for result in iresults {
+            if let Ok(()) = result {
+                isuccess += 1;
+            } else {
+                ifail += 1;
+            }
+        }
+
+        println!("Clearing {} unknown files from index stored in directory {}", unknown.len(), data_dir.as_str());
+        let cresults = spawn_clear_jobs(file_indexer, unknown, args.jobs).await;
+        let mut csuccess = 0;
+        let mut cfail = 0;
+        for result in cresults {
+            if let Ok(()) = result {
+                csuccess += 1;
+            } else {
+                cfail += 1;
+            }
+        }
+
+        println!("{isuccess} files successfully indexed, {ifail} files failed indexing.");
+        println!("{csuccess} files successfully cleared, {cfail} files failed clearing.");
+        if ifail > 0 || cfail > 0 {
+            return Err(anyhow::Error::msg("oh no"));
+        }
+
+        Ok(())
+    });
+
+    #[cfg(feature = "tracing")]
+    {
+        print_metrics(&rt.metrics());
+
+        println!("Press Enter to quit...");
+        let mut empty = String::new();
+        std::io::stdin().read_line(&mut empty);
     }
 
-    println!("{success} files successfully indexed, {fail} files failed.");
-    if fail > 0 {
-        return Err(anyhow::Error::msg("oh no"));
-    }
-
-    Ok(())
+    result
 }
 
 /// Sanitizes, sorts, and dedupes a vec of PathBufs into Utf8PathBufs
@@ -179,7 +229,7 @@ fn explore_directories(folders: Vec<PathBuf>, files: &mut Vec<PathBuf>, recursiv
 }
 
 async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + Clone + 'static>>, 
-    files: Vec<Arc<Utf8PathBuf>>, jobs: usize) -> Vec<Result<(), ()>> {
+    files: Vec<Utf8PathBuf>, jobs: usize) -> Vec<Result<(), ()>> {
     let semaphore = Arc::new(Semaphore::new(jobs));
     let mut handles = vec![];
 
@@ -208,6 +258,52 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
                 },
                 Err(e) => {
                     bar_clone.println(format!("Error while processing file with path {:?}: {:?}", e.path, e.source()));
+                    Err(())
+                },
+            }
+        });
+        handles.push(handle);
+    }
+
+    let mut results = vec![];
+    for handle in handles {
+        results.push(handle.await.unwrap_or(Err(())));
+    }
+
+    bar.finish();
+
+    results
+}
+
+async fn spawn_clear_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + Clone + 'static>>, 
+    files: Vec<Utf8PathBuf>, jobs: usize) -> Vec<Result<(), ()>> {
+    let semaphore = Arc::new(Semaphore::new(jobs));
+    let mut handles = vec![];
+
+    let bar = Arc::new(ProgressBar::new(files.len().try_into().unwrap()));
+    bar.enable_steady_tick(Duration::from_secs(1));
+    bar.tick();
+
+    for file in files {
+        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e| 
+            panic!("Failed to acquire semaphore permit (was the semaphore closed?): {e:?}"));
+        let indexer_clone = file_indexer.clone();
+        let bar_clone = bar.clone();
+        let handle = task::spawn(async move {
+            let result = indexer_clone.clear(&file).await;
+
+            drop(permit); // Release the permit when done
+            bar_clone.inc(1);
+            match result {
+                Ok(FileIndexing::Result { path: _, r#type: FileIndexing::ResultType::Indexed }) => {
+                    unreachable!("Clear will never return an Indexed result");
+                },
+                Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared  }) => {
+                    bar_clone.println(format!("Path {path} successfully cleared from index"));
+                    Ok(())
+                },
+                Err(e) => {
+                    bar_clone.println(format!("Error while clearing file with path {:?}: {:?}", e.path, e.source()));
                     Err(())
                 },
             }

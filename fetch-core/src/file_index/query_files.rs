@@ -47,7 +47,7 @@ impl<I: IndexVector + QueryVectorKeys + Send + Sync> QueryFiles for FileIndexer<
         let offset = (page - 1) * num_results;
         match self.vector_store.query_n_keys(query_vector, num_results, offset).await {
             Ok(list) => Ok(FileQuerying::Result::from(list)),
-            Err(e) => Err(FileQuerying::Error {query: file_description.to_string(), 
+            Err(e) => Err(FileQuerying::Error { query: file_description.to_string(), 
                 source: e.into(), r#type: FileQuerying::ErrorType::Query }),
         }
     }

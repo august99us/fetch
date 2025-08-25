@@ -19,10 +19,12 @@ pub trait IndexFiles {
     /// Clear the index for a file path. Does not check for the existence of the file
     async fn clear<'a>(&self, path: &'a Utf8Path) -> Result<FileIndexing::Result<'a>, FileIndexing::Error>;
     // Clears the index for all files currently indexed under a path. Does not check for existence of the path or files
-    // EG. clear_fuzzy("/home/august99us/test_imgs") would clear "/home/august99us/test_imgs/dog.jpg" and "/home/august99us/test_imgs/cat.jpg"
-    // as well as any other files that have /home/august99us/test_imgs in the path
+    // EG. clear_fuzzy("/home/august99us/test") would clear "/home/august99us/test/dog.jpg" and "/home/august99us/test/cat.jpg"
+    // as well as /home/august99us/test/testing/doc.pdf any other files that have /home/august99us/test in the path
     // TODO build this api
     // async fn clear_fuzzy(&self, path: &'a Utf8Path) -> Result<FileIndexing::Result<'a>, FileIndexing::Error>;
+    // TODO perhaps this api too?
+    // async fn index_fuzzy<'a>(&self, path: &'a Utf8Path) -> Result<FileIndexing::Result<'a>, FileIndexing::Error>;
 }
 
 impl<I: IndexVector + QueryVectorKeys + Send + Sync> IndexFiles for FileIndexer<I> {
@@ -46,11 +48,7 @@ impl<I: IndexVector + QueryVectorKeys + Send + Sync> IndexFiles for FileIndexer<
             },
             Err(PreviewError::NotFound {..}) | Ok(None) => {
                 // File not found or preview type not registered with preview system
-                match self.vector_store.delete(path.as_str(), None).await {
-                    Ok(()) => Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared }),
-                    Err(e) => Err(FileIndexing::Error { path: path.to_string(), source: e.into(),
-                        r#type: FileIndexing::ErrorType::Clear }),
-                }
+                self.clear(path).await
             },
             Err(e) => {
                 // Preview unable to be generated due to an error

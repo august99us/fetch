@@ -11,4 +11,4 @@ resolver = "2"
 anyhow = { version = "1.0.98", features = ["backtrace"] }
 camino = "1.1.9"
 futures = "0.3.31"
-tokio = { version = "1.44.0", features = ["signal", "sync"] }
+tokio = { version = "1.47.0", features = ["signal", "sync", "rt-multi-thread", "macros"] }

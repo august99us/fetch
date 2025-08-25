@@ -4,6 +4,7 @@ use candle_core::{DType, Device, Tensor, D};
 use candle_nn::VarBuilder;
 use candle_transformers::models::clip::{ClipConfig, ClipModel};
 use tokenizers::Tokenizer;
+use tokio::task;
 use tokio_retry::RetryIf;
 
 use crate::previewable::{PreviewType, PreviewedFile};
@@ -56,22 +57,31 @@ impl Embeddable for PreviewedFile {
                 // this entire part should be blocking.
                 let (model, _tokenizer) = get_model_and_tokenizer().await
                     .map_err(EmbeddingError::Initialization)?;
-                let image = load_image(&self.preview_path, 224) // MUST be 224 or the tensor math for the model doesn't work out i think?
-                    // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
-                    .map_err(|e| EmbeddingError::IO { path: self.preview_path.to_string(), source: e })?;
 
-                let images = vec![image];
-                let images = Tensor::stack(&images, 0)
-                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Preparing pixel values", source: e.into() })?;
+                // Cloning the path here is necessary because spawn_blocking tasks will not abort if the handle is dropped.
+                // They will still complete, therefore they need a valid 'static reference or owned variable. This cloned
+                // variable will be dropped as soon as the task completes, so it is a tiny, transient memory overhead.
+                let image_path = self.preview_path.clone();
+                let vector_result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
+                    let image = load_image(&image_path, 224)
+                        // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
+                        .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e })?;
 
-                let embedding = model.get_image_features(&images)
-                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Performing clip transformation", source: e.into() })?;
-                let embedding = div_l2_norm(&embedding)
-                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Normalizing result vector", source: e })?;
-                let vector = embedding.to_vec2::<f32>()
-                    .map_err(|e| EmbeddingError::Calculation { element: self.preview_path.to_string(), step: "Remapping to vec2", source: e.into() })?
-                    .swap_remove(0);
-                Ok(vector)
+                    let images = vec![image];
+                    let images = Tensor::stack(&images, 0)
+                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Preparing pixel values", source: e.into() })?;
+
+                    let embedding = model.get_image_features(&images)
+                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Performing clip transformation", source: e.into() })?;
+                    let embedding = div_l2_norm(&embedding)
+                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Normalizing result vector", source: e })?;
+                    let vector = embedding.to_vec2::<f32>()
+                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Remapping to vec2", source: e.into() })?
+                        .swap_remove(0);
+                    Ok(vector)
+                }).await.map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task", source: e.into() })?;
+
+                vector_result
             },
             _ => todo!(),
         }
@@ -183,5 +193,11 @@ pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, anyhow::Error> {
 
 fn device() -> &'static Device {
     static DEVICE: OnceLock<Device> = OnceLock::new();
-    DEVICE.get_or_init(|| Device::cuda_if_available(0).unwrap())
+    DEVICE.get_or_init(|| {
+        let device = Device::cuda_if_available(0).unwrap();
+        if device.is_cuda() {
+            println!("CUDA device found");
+        }
+        device
+    })
 }
