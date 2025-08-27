@@ -3,11 +3,6 @@ use std::{fs, sync::LazyLock};
 use camino::{Utf8Path, Utf8PathBuf};
 use config::{Config, ConfigError, File};
 
-static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_path_buf(dirs::data_local_dir()
-            .expect("Failed to get local data directory"))
-            .expect("Local data directory is not a valid UTF-8 path")
-            .join("fetch"));
-
 /// Gets the default directory path for storing file indices.
 /// 
 /// This function reads from the data configuration file and replaces the `%%AppDataDirectory%%`
@@ -91,12 +86,8 @@ pub fn get_watchlist_file_path() -> Utf8PathBuf {
 fn get_daemon_config() -> Result<Config, ConfigError> {
     let config_file_path = get_app_folder().join("daemon.toml");
     if !fs::exists(&config_file_path).expect("Error while checking if data config file exists") {
-        #[cfg(target_family = "unix")]
-        let bytes = include_bytes!("../artifacts/defaults/daemon.toml");
-        #[cfg(target_family = "windows")]
-        let bytes = include_bytes!("../artifacts/defaults/windows/daemon.toml");
         // If the daemon.toml file does not exist, create it with default values
-        fs::write(&config_file_path, bytes).expect("Failed to create default daemon.toml");
+        fs::write(&config_file_path, DEFAULT_DAEMON_CONFIG_BYTES).expect("Failed to create default daemon.toml");
     }
 
     Config::builder()
@@ -107,12 +98,8 @@ fn get_daemon_config() -> Result<Config, ConfigError> {
 fn get_data_config() -> Result<Config, ConfigError> {
     let config_file_path = get_app_folder().join("data.toml");
     if !fs::exists(&config_file_path).expect("Error while checking if data config file exists") {
-        #[cfg(target_family = "unix")]
-        let bytes = include_bytes!("../artifacts/defaults/data.toml");
-        #[cfg(target_family = "windows")]
-        let bytes = include_bytes!("../artifacts/defaults/windows/data.toml");
         // If the data.toml file does not exist, create it with default values
-        fs::write(&config_file_path, bytes).expect("Failed to create default data.toml");
+        fs::write(&config_file_path, DEFAULT_DATA_CONFIG_BYTES).expect("Failed to create default data.toml");
     }
 
     Config::builder()
@@ -127,3 +114,18 @@ fn get_app_folder() -> &'static Utf8Path {
     }
     folder.as_path()
 }
+
+// Private constants and functions
+#[cfg(target_family = "unix")]
+const DEFAULT_DAEMON_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/defaults/daemon.toml");
+#[cfg(target_family = "windows")]
+const DEFAULT_DAEMON_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/defaults/windows/daemon.toml");
+#[cfg(target_family = "unix")]
+const DEFAULT_DATA_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/defaults/data.toml");
+#[cfg(target_family = "windows")]
+const DEFAULT_DATA_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/defaults/windows/data.toml");
+
+static APP_FOLDER: LazyLock<Utf8PathBuf> = LazyLock::new(|| Utf8PathBuf::from_path_buf(dirs::data_local_dir()
+            .expect("Failed to get local data directory"))
+            .expect("Local data directory is not a valid UTF-8 path")
+            .join("fetch"));

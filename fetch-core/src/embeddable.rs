@@ -1,32 +1,13 @@
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
-use candle_core::{DType, Device, Tensor, D};
-use candle_nn::VarBuilder;
-use candle_transformers::models::clip::{ClipConfig, ClipModel};
-use tokenizers::Tokenizer;
+use fastembed::{ExecutionProviderDispatch, ImageEmbedding, ImageInitOptionsUserDefined, InitOptionsUserDefined, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel, UserDefinedImageEmbeddingModel};
 use tokio::task;
-use tokio_retry::RetryIf;
+use ort::execution_providers::CPUExecutionProvider;
 
 use crate::previewable::{PreviewType, PreviewedFile};
 
 /// Adds the embeddable trait, signifying that a struct or object has data that it can use to
 /// create an embedding.
-/// 
-/// Using the Embedder trait here ties the API of fetch to the API of embed_anything. This is something
-/// I am willing to commit to because the functions that embed_anything seems to intend to provide match
-/// closely the functionalities that I am looking to satisfy with such a trait, were I to build one myself.
-/// This was my previous intention with fetch-translation, however having found embed_anything I believe
-/// this is no longer necessary.
-/// 
-/// Interestingly, the authors of embed_anything originally set out to do what looks like the same goal
-/// as what I am trying to achieve with fetch, with their Starlight Search project.
-/// https://starlight-search.com/blog/2024/12/15/embed-anything/
-/// It sounds like their strategy was to locally embed the entire document, and therefore they ran into issues
-/// with both large documents and locally embedding things. Solution for large documents was to stream the
-/// document instead of loading the entire thing into memory, and for local embeddings they built embed_
-/// anything. My strategy differs slightly in that I only intend to embed limited sized previews of files,
-/// but I also don't yet have a solution for something like a pdf file (which is both on the larger side,
-/// and also contains multiple modalities within the same file).
 pub trait Embeddable {
     /// Calculates the embedding for the presented data in the objects using the Embedder passed in the
     /// arguments. Embedder model should support both image and text embeddings.
@@ -51,37 +32,30 @@ impl Embeddable for PreviewedFile {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         match self.r#type {
             PreviewType::Image => {
-                // TODO: make this implementation more mature, both using a better model and better code,
-                // with error handling, etc.
-
-                // this entire part should be blocking.
-                let (model, _tokenizer) = get_model_and_tokenizer().await
-                    .map_err(EmbeddingError::Initialization)?;
+                let mut model = get_image_model().map_err(EmbeddingError::Initialization)?;
 
                 // Cloning the path here is necessary because spawn_blocking tasks will not abort if the handle is dropped.
                 // They will still complete, therefore they need a valid 'static reference or owned variable. This cloned
                 // variable will be dropped as soon as the task completes, so it is a tiny, transient memory overhead.
                 let image_path = self.preview_path.clone();
-                let vector_result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
-                    let image = load_image(&image_path, 224)
-                        // Errors here are not just IO errors. there is reshaping in this function too. but this will be refactored later anyway so leaving it for now
-                        .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e })?;
+                let result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
+                    // load image
+                    let img = image::ImageReader::open(&image_path)
+                        .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e.into() })?
+                        .decode()
+                        .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e.into() })?;
 
-                    let images = vec![image];
-                    let images = Tensor::stack(&images, 0)
-                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Preparing pixel values", source: e.into() })?;
+                    // embed image
+                    model.embed_images(vec![img])
+                        .map(|mut v| v.pop().unwrap())
+                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(),
+                            step: "Performing image embedding", source: e.into() })
+                })
+                .await
+                .map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task",
+                    source: e.into() })?;
 
-                    let embedding = model.get_image_features(&images)
-                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Performing clip transformation", source: e.into() })?;
-                    let embedding = div_l2_norm(&embedding)
-                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Normalizing result vector", source: e })?;
-                    let vector = embedding.to_vec2::<f32>()
-                        .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(), step: "Remapping to vec2", source: e.into() })?
-                        .swap_remove(0);
-                    Ok(vector)
-                }).await.map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task", source: e.into() })?;
-
-                vector_result
+                result
             },
             _ => todo!(),
         }
@@ -90,114 +64,73 @@ impl Embeddable for PreviewedFile {
 
 impl Embeddable for &str {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
-        let (model, tokenizer) = get_model_and_tokenizer().await
-            .map_err(EmbeddingError::Initialization)?;
+        let mut model = get_text_model().map_err(EmbeddingError::Initialization)?;
 
-        let encoding = tokenizer.encode(*self, true)
-            .map_err(|e| EmbeddingError::Tokenizing { query: self.to_string(), source: anyhow::Error::from_boxed(e) })?;
-        let tokens = Tensor::new(encoding.get_ids().to_vec(), device())
-                .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Creating token tensor", source: e.into() })?
-                .unsqueeze(0)
-                .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Expanding token tensor", source: e.into() })?;
+        // clone for async task
+        let s = self.to_string();
+        let result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
+            model.embed(vec![&s], None)
+                .map(|mut v| v.pop().unwrap())
+                .map_err(|e| EmbeddingError::Calculation { element: s,
+                    step: "Performing text embedding", source: e.into() })
+        })
+        .await
+        .map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task",
+            source: e.into() })?;
 
-        let embedding = model.get_text_features(&tokens)
-            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Performing clip transformation", source: e.into() })?;
-        let embedding = div_l2_norm(&embedding)
-            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Normalizing result vector", source: e })?;
-        let vector = embedding.to_vec2::<f32>()
-            .map_err(|e| EmbeddingError::Calculation { element: self.to_string(), step: "Remapping to vec2", source: e.into() })?
-            .swap_remove(0);
-        Ok(vector)
+        result
     }
 }
 
-// TODO Modularize model code and refactor into a separate package (fetch-translation?)
-async fn get_model_and_tokenizer() -> Result<(ClipModel, Tokenizer), anyhow::Error> {
-    let device = device();
+// Private variables and functions
+const VISION_MODEL_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-vision/model.onnx");
+const VISION_PREPROCESSOR_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-vision/preprocessor_config.json");
+const TEXT_MODEL_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/model.onnx");
+const TEXT_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/config.json");
+const TEXT_TOKENIZER_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/tokenizer.json");
+const TEXT_TOKENIZER_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/tokenizer_config.json");
+const TEXT_SPECIAL_TOKENS_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/special_tokens_map.json");
 
-    let api = hf_hub::api::tokio::Api::new()?;
-    let api = api.repo(hf_hub::Repo::new(
-        "openai/clip-vit-base-patch32".to_string(),
-        hf_hub::RepoType::Model,
-    ));
+// Cannot make these static singletons because they need to be mutable
+fn get_image_model() -> Result<ImageEmbedding, anyhow::Error> {
+    ImageEmbedding::try_new_from_user_defined(
+        UserDefinedImageEmbeddingModel::new(
+            VISION_MODEL_BYTES.to_vec(),
+            VISION_PREPROCESSOR_CONFIG_BYTES.to_vec()),
+        ImageInitOptionsUserDefined::default().with_execution_providers(get_execution_providers()),
+    )
+}
 
-    let retry_strategy = tokio_retry::strategy::ExponentialBackoff::from_millis(30)
-        .factor(1000)
-        .map(tokio_retry::strategy::jitter)
-        .take(2);
-    let retry_condition = |err: &hf_hub::api::tokio::ApiError| {
-        match err {
-            hf_hub::api::tokio::ApiError::LockAcquisition(_) => {
-                eprintln!("File locked while downloading model, probably means another thread is downloading. Retrying later...");
-                true
+fn get_text_model() -> Result<TextEmbedding, anyhow::Error> {
+    TextEmbedding::try_new_from_user_defined(
+        UserDefinedEmbeddingModel::new(
+            TEXT_MODEL_BYTES.to_vec(),
+            TokenizerFiles {
+                tokenizer_file: TEXT_TOKENIZER_BYTES.to_vec(),
+                config_file: TEXT_CONFIG_BYTES.to_vec(),
+                tokenizer_config_file: TEXT_TOKENIZER_CONFIG_BYTES.to_vec(),
+                special_tokens_map_file: TEXT_SPECIAL_TOKENS_BYTES.to_vec(),
             }
-            _ => false
-        }
-    };
-    let model_file = RetryIf::spawn(retry_strategy.clone(), || api.get("pytorch_model.bin"),
-        retry_condition).await?;
-    let tokenizer_file = RetryIf::spawn(retry_strategy.clone(), || api.get("tokenizer.json"),
-        retry_condition).await?;
-
-    let vb = VarBuilder::from_pth(model_file, DType::F32, device)?;
-
-    let config = ClipConfig::vit_base_patch32();
-    // lock aquisition error handling?
-    let model = ClipModel::new(vb, &config)?;
-    // lock aquisition error handling?
-    let tokenizer = Tokenizer::from_file(tokenizer_file).map_err(anyhow::Error::msg)?;
-    Ok((model, tokenizer))
+        ),
+        InitOptionsUserDefined::default().with_execution_providers(get_execution_providers()),
+    )
 }
 
-fn load_image<T: AsRef<std::path::Path>>(path: T, image_size: usize) -> Result<Tensor, anyhow::Error> {
-    let device = device();
+fn get_execution_providers() -> Vec<ExecutionProviderDispatch> {
+    #[cfg(feature = "cuda")]
+    {
+        use ort::execution_providers::CUDAExecutionProvider;
 
-    let img = image::ImageReader::open(path)?.decode()?;
-    let (height, width) = (image_size, image_size);
-    // resize_to_fill resizes the image, but trims it to fit the given dimensions, meaning it cuts off
-    // portions of the image. perhaps this needs to be changed eventually.
-    let img = img.resize_to_fill(
-        width as u32,
-        height as u32,
-        image::imageops::FilterType::Triangle,
-    );
-    let img = img.to_rgb8();
-    let img = img.into_raw();
-    let img = Tensor::from_vec(img, (height, width, 3), device)?
-        .permute((2, 0, 1))?
-        .to_dtype(DType::F32)?
-        .affine(2. / 255., -1.)?;
-    Ok(img)
-}
+        vec![Into::<ExecutionProviderDispatch>::into(CUDAExecutionProvider::default()).error_on_failure()]
+    }
+    #[cfg(feature = "qnn")]
+    {
+        use ort::execution_providers::QNNExecutionProvider;
 
-/// Normalizes a tensor by dividing it by its L2 norm.
-/// 
-/// This function calculates the L2 norm (Euclidean norm) of the input tensor and divides
-/// the tensor by this norm, effectively normalizing it to unit length.
-/// 
-/// # Arguments
-/// 
-/// * `v` - The input tensor to normalize
-/// 
-/// # Returns
-/// 
-/// A normalized tensor with the same shape as the input, or an error if the operation fails.
-/// 
-/// # Errors
-/// 
-/// Returns an error if tensor operations (square, sum, sqrt, or broadcast division) fail.
-pub fn div_l2_norm(v: &Tensor) -> Result<Tensor, anyhow::Error> {
-    let l2_norm = v.sqr()?.sum_keepdim(D::Minus1)?.sqrt()?;
-    Ok(v.broadcast_div(&l2_norm).map_err(Box::new)?)
-}
-
-fn device() -> &'static Device {
-    static DEVICE: OnceLock<Device> = OnceLock::new();
-    DEVICE.get_or_init(|| {
-        let device = Device::cuda_if_available(0).unwrap();
-        if device.is_cuda() {
-            println!("CUDA device found");
-        }
-        device
-    })
+        vec![Into::<ExecutionProviderDispatch>::into(QNNExecutionProvider::default()).error_on_failure()]
+    }
+    #[cfg(not(any(feature = "cuda", feature = "qnn")))]
+    {
+        vec![CPUExecutionProvider::default().into()]
+    }
 }

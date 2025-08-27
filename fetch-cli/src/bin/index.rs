@@ -34,7 +34,10 @@ struct Args {
 
 fn main() -> Result<(), anyhow::Error> {
     #[cfg(feature = "tracing")]
-    console_subscriber::init();
+    {
+        console_subscriber::init();
+    }
+    let start_time = std::time::Instant::now();
 
     let args = Args::parse();
 
@@ -139,6 +142,8 @@ fn main() -> Result<(), anyhow::Error> {
     {
         print_metrics(&rt.metrics());
 
+        let elapsed = start_time.elapsed();
+        println!("Total indexing duration: {:.2?}", elapsed);
         println!("Press Enter to quit...");
         let mut empty = String::new();
         std::io::stdin().read_line(&mut empty);

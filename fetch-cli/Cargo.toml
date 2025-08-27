@@ -20,7 +20,6 @@ name = "fetch-daemon"
 path = "src/bin/file_daemon.rs"
 
 [features]
-cuda = ["fetch-core/cuda"]
 tracing = ["console-subscriber", "tokio/tracing"]
 
 [dependencies]

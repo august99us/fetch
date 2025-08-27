@@ -8,7 +8,6 @@ name = "fetch-gui"
 path = "src/main.rs"
 
 [features]
-cuda = ["fetch-core/cuda"]
 
 [dependencies]
 # Workspace dependencies
