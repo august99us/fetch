@@ -7,7 +7,7 @@ use tokio::{fs::File, io::AsyncReadExt};
 
 pub async fn run_index_query(query: String, page: u32) -> Result<Vec<Utf8PathBuf>, String> {
     let data_dir = app_config::get_default_index_directory();
-    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await
+    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 768).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
     let file_indexer = FileIndexer::with(lancedbstore);
 

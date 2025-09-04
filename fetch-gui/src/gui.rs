@@ -1,6 +1,8 @@
 use std::{borrow::Cow, ops::{AddAssign, SubAssign}};
 
 use camino::Utf8PathBuf;
+use fetch_common::bin::init_ort;
+use fetch_core::embeddable::session_pool::init_querying;
 use iced::{task::Handle, widget::{button, column, container, horizontal_rule, horizontal_space, row, stack, text, text_input, vertical_space}, Alignment, Element, Font, Length, Pixels, Size, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area::{self, ResultsArea}};
@@ -9,11 +11,14 @@ const SINGLE_PAD : Pixels = Pixels(5.0);
 
 pub fn run_fetch_application() -> iced::Result {
     let mut settings = iced::Settings::default();
-    let fonts = vec![Cow::from(include_bytes!("../artifacts/fonts/Inter/Inter_18pt-Regular.ttf"))];
+    let fonts = vec![
+        Cow::from(include_bytes!("../artifacts/fonts/Inter/Inter_18pt-Regular.ttf")),
+        Cow::from(include_bytes!("../artifacts/fonts/BabelStone/BabelStoneShapes.ttf")),
+    ];
     settings.fonts = fonts;
-    settings.default_font = Font::with_name("Inter");
+    settings.default_font = Font::with_name("Inter 18pt");
 
-    iced::application(SearchPage::default, SearchPage::update, SearchPage::view)
+    iced::application(SearchPage::boot, SearchPage::update, SearchPage::view)
         .title("Fetch")
         .window_size(Size::new(1075.0, 700.0))
         .settings(settings)
@@ -48,6 +53,12 @@ pub enum SearchPageMessage {
 }
 
 impl SearchPage {
+    pub fn boot() -> SearchPage {
+        init_ort().expect("Failed initializing ort");
+        init_querying();
+        Self::default()
+    }
+
     pub fn update(&mut self, message: SearchPageMessage) -> Task<SearchPageMessage> {
         match message {
             SearchPageMessage::QueryChanged(query) => {
@@ -152,8 +163,14 @@ impl SearchPage {
         };
 
         // Pagination row /////////////////////
-        let prev_text = text("◀").size(14).center();
-        let mut prev_button = button(prev_text)
+        let prev_text = text("◀")
+            .size(14)
+            .font(Font::with_name("BabelStone Shapes"))
+            .center();
+        let mut prev_button = button(column![
+                vertical_space().height(Length::Fixed(1.0)),
+                prev_text
+            ])
             .padding(SINGLE_PAD)
             .width(Length::Fixed(27.0))
             .height(Length::Shrink)
@@ -163,11 +180,17 @@ impl SearchPage {
             prev_button = prev_button.on_press(SearchPageMessage::PreviousPage);
         }
 
-        let page_info = column![vertical_space().height(Length::Fixed(2.0)),
+        let page_info = column![//vertical_space().height(Length::Fixed(2.0)),
             text(format!("Page {}", u32::from(self.page))).size(14)];
 
-        let next_text = text("▶").size(14).center();
-        let mut next_button = button(next_text)
+        let next_text = text("▶")
+            .size(14)
+            .font(Font::with_name("BabelStone Shapes"))
+            .center();
+        let mut next_button = button(column![
+                vertical_space().height(Length::Fixed(1.0)),
+                next_text
+            ])
             .padding(SINGLE_PAD)
             .width(Length::Fixed(27.0))
             .height(Length::Shrink)

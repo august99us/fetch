@@ -1,7 +1,8 @@
 use std::{error::Error, future::Future, pin::Pin};
 
 use clap::Parser;
-use fetch_core::{app_config, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, embeddable::session_pool::init_querying, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_util::bin::init_ort;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]
@@ -26,8 +27,11 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
+    init_ort()?;
+    init_querying();
+
     let data_dir = app_config::get_default_index_directory();
-    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await
+    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 768).await
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
     let file_indexer = FileIndexer::with(lancedbstore);
 

@@ -1,10 +1,13 @@
-use std::sync::LazyLock;
+use std::sync::MutexGuard;
 
-use fastembed::{ExecutionProviderDispatch, ImageEmbedding, ImageInitOptionsUserDefined, InitOptionsUserDefined, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel, UserDefinedImageEmbeddingModel};
+pub mod session_pool;
+use image::GenericImageView;
+use ndarray::{Array, Axis};
+use ort::{inputs, session::Session, value::TensorRef};
 use tokio::task;
-use ort::execution_providers::CPUExecutionProvider;
 
-use crate::previewable::{PreviewType, PreviewedFile};
+use crate::{embeddable::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, TEXT_TOKENIZER}, previewable::{PreviewType, PreviewedFile}};
+use session_pool::SessionPoolExt;
 
 /// Adds the embeddable trait, signifying that a struct or object has data that it can use to
 /// create an embedding.
@@ -22,8 +25,8 @@ pub enum EmbeddingError {
     IO { path: String, #[source] source: anyhow::Error },
     #[error("Error while performing neural network calculations with file")]
     Calculation { element: String, step: &'static str, #[source] source: anyhow::Error },
-    #[error("Error while tokenizing query in preparation for embedding")]
-    Tokenizing { query: String, #[source] source: anyhow::Error },
+    #[error("Error while preprocessing data in preparation for embedding")]
+    Preprocessing { element: String, step: &'static str, #[source] source: anyhow::Error },
     #[error("Error")]
     Unknown { msg: &'static str, #[source] source: anyhow::Error },
 }
@@ -32,24 +35,53 @@ impl Embeddable for PreviewedFile {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         match self.r#type {
             PreviewType::Image => {
-                let mut model = get_image_model().map_err(EmbeddingError::Initialization)?;
-
-                // Cloning the path here is necessary because spawn_blocking tasks will not abort if the handle is dropped.
-                // They will still complete, therefore they need a valid 'static reference or owned variable. This cloned
-                // variable will be dropped as soon as the task completes, so it is a tiny, transient memory overhead.
+                // Cloning the path here is necessary for the blocking task
                 let image_path = self.preview_path.clone();
                 let result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
+                    // Get session from pool inside the blocking task
+                    let mut session = get_image_session();
+                    
                     // load image
                     let img = image::ImageReader::open(&image_path)
                         .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e.into() })?
                         .decode()
                         .map_err(|e| EmbeddingError::IO { path: image_path.to_string(), source: e.into() })?;
+                    
+                    let resized_img = img.resize_exact(512, 512, image::imageops::FilterType::Triangle);
+                    let mut input = Array::zeros((1, 3, 512, 512));
+                    for pixel in resized_img.pixels() {
+                        let x = pixel.0 as _;
+                        let y = pixel.1 as _;
+                        let [r, g, b, _] = pixel.2.0;
+                        input[[0, 0, y, x]] = (r as f32) / 255.;
+                        input[[0, 1, y, x]] = (g as f32) / 255.;
+                        input[[0, 2, y, x]] = (b as f32) / 255.;
+                    }
 
                     // embed image
-                    model.embed_images(vec![img])
-                        .map(|mut v| v.pop().unwrap())
+                    let result = session.run(inputs![
+                            "input" => TensorRef::from_array_view(&input)
+                                .map_err(|e| EmbeddingError::Preprocessing { 
+                                    element: image_path.to_string(), 
+                                    step: "Converting to tensor", 
+                                    source: e.into(),
+                                })?
+                        ])
                         .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(),
-                            step: "Performing image embedding", source: e.into() })
+                            step: "Performing image embedding", source: e.into() })?
+                        .get("output")
+                        .expect("model should place output in 'output' key")
+                        .try_extract_array::<f32>()
+                        .map_err(|e| EmbeddingError::Unknown {
+                            msg: "Error while extracting array from output as f32",
+                            source: e.into(),
+                        })?
+                        .into_owned()
+                        .into_shape_with_order((768,))
+                        .expect("Model should return a (1, 768) shaped array which should be able to be reshaped into a vector")
+                        .to_vec();
+
+                    Ok(result)
                 })
                 .await
                 .map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task",
@@ -64,15 +96,48 @@ impl Embeddable for PreviewedFile {
 
 impl Embeddable for &str {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
-        let mut model = get_text_model().map_err(EmbeddingError::Initialization)?;
-
-        // clone for async task
-        let s = self.to_string();
+        // clone for async task, lower for siglip2
+        let query_copy = self.to_string();
+        let s = self.to_lowercase();
         let result = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
-            model.embed(vec![&s], None)
-                .map(|mut v| v.pop().unwrap())
-                .map_err(|e| EmbeddingError::Calculation { element: s,
-                    step: "Performing text embedding", source: e.into() })
+            let mut model = get_text_session();
+            let tokenizer = &TEXT_TOKENIZER;
+            
+            let encoding = tokenizer.encode(s, false)
+                .map_err(|e| EmbeddingError::Preprocessing { 
+                    element: format!("Query: {}" , query_copy),
+                    step: "tokenizing",
+                    source: anyhow::anyhow!(e) })?;
+            let input_ids = encoding.get_ids().into_iter().map(|n| *n as i64).collect();
+            
+            let input = Array::from_vec(input_ids)
+                .insert_axis(Axis(0));
+
+            let result = model.run(inputs![
+                    "input" => TensorRef::from_array_view(&input)
+                        .map_err(|e| EmbeddingError::Preprocessing { 
+                            element: format!("Query: {}" , query_copy),
+                            step: "Converting to tensor", 
+                            source: e.into(),
+                        })?
+                ])
+                .map_err(|e| EmbeddingError::Calculation {
+                    element: format!("Query: {}" , query_copy),
+                    step: "Performing text embedding", source: e.into()
+                })?
+                .get("output")
+                .expect("model should place output in 'output' key")
+                .try_extract_array::<f32>()
+                .map_err(|e| EmbeddingError::Unknown {
+                    msg: "Error while extracting array from output as f32",
+                    source: e.into(),
+                })?
+                .into_owned()
+                .into_shape_with_order((768,))
+                .expect("Model should return a (1, 768) shaped array which should be able to be reshaped into a vector")
+                .to_vec();
+            
+            Ok(result)
         })
         .await
         .map_err(|e| EmbeddingError::Unknown { msg: "Error while joining embedding blocking task",
@@ -83,54 +148,11 @@ impl Embeddable for &str {
 }
 
 // Private variables and functions
-const VISION_MODEL_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-vision/model.onnx");
-const VISION_PREPROCESSOR_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-vision/preprocessor_config.json");
-const TEXT_MODEL_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/model.onnx");
-const TEXT_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/config.json");
-const TEXT_TOKENIZER_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/tokenizer.json");
-const TEXT_TOKENIZER_CONFIG_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/tokenizer_config.json");
-const TEXT_SPECIAL_TOKENS_BYTES: &[u8] = include_bytes!("../artifacts/models/clip-b-32-text/special_tokens_map.json");
 
-// Cannot make these static singletons because they need to be mutable
-fn get_image_model() -> Result<ImageEmbedding, anyhow::Error> {
-    ImageEmbedding::try_new_from_user_defined(
-        UserDefinedImageEmbeddingModel::new(
-            VISION_MODEL_BYTES.to_vec(),
-            VISION_PREPROCESSOR_CONFIG_BYTES.to_vec()),
-        ImageInitOptionsUserDefined::default().with_execution_providers(get_execution_providers()),
-    )
+fn get_image_session() -> MutexGuard<'static, Session> {
+    IMAGE_SESSION_POOL.get_session()
 }
 
-fn get_text_model() -> Result<TextEmbedding, anyhow::Error> {
-    TextEmbedding::try_new_from_user_defined(
-        UserDefinedEmbeddingModel::new(
-            TEXT_MODEL_BYTES.to_vec(),
-            TokenizerFiles {
-                tokenizer_file: TEXT_TOKENIZER_BYTES.to_vec(),
-                config_file: TEXT_CONFIG_BYTES.to_vec(),
-                tokenizer_config_file: TEXT_TOKENIZER_CONFIG_BYTES.to_vec(),
-                special_tokens_map_file: TEXT_SPECIAL_TOKENS_BYTES.to_vec(),
-            }
-        ),
-        InitOptionsUserDefined::default().with_execution_providers(get_execution_providers()),
-    )
-}
-
-fn get_execution_providers() -> Vec<ExecutionProviderDispatch> {
-    #[cfg(feature = "cuda")]
-    {
-        use ort::execution_providers::CUDAExecutionProvider;
-
-        vec![Into::<ExecutionProviderDispatch>::into(CUDAExecutionProvider::default()).error_on_failure()]
-    }
-    #[cfg(feature = "qnn")]
-    {
-        use ort::execution_providers::QNNExecutionProvider;
-
-        vec![Into::<ExecutionProviderDispatch>::into(QNNExecutionProvider::default()).error_on_failure()]
-    }
-    #[cfg(not(any(feature = "cuda", feature = "qnn")))]
-    {
-        vec![CPUExecutionProvider::default().into()]
-    }
+fn get_text_session() -> MutexGuard<'static, Session> {
+    TEXT_SESSION_POOL.get_session()
 }

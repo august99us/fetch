@@ -1,14 +1,13 @@
-use std::{collections::HashSet, error::Error, io::Read, path::{self, PathBuf}, sync::Arc, time::Duration};
+use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, time::Duration};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch_core::{app_config, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
+use fetch_cli::utility::print_metrics;
+use fetch_common::bin::init_ort;
+use fetch_core::{app_config, embeddable::session_pool::init_indexing, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{runtime, sync::Semaphore, task};
-
-#[cfg(feature = "tracing")]
-use fetch_cli::utility::print_metrics;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-index")]
@@ -16,7 +15,7 @@ use fetch_cli::utility::print_metrics;
 #[command(version = "0.1")]
 #[command(about = "indexes things semantically", long_about = None)]
 struct Args {
-    // Verbose mode
+    /// Verbose mode
     #[arg(short, long)]
     verbose: bool,
     /// Number of parallel indexing jobs to run at once
@@ -28,18 +27,25 @@ struct Args {
     /// Do not confirm before indexing
     #[arg(short, long)]
     force: bool,
+    /// Track and print metrics
+    #[arg(short, long)]
+    metrics: bool,
     /// File or folder paths to index
     paths: Vec<PathBuf>,
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(feature = "tracing")]
     {
-        console_subscriber::init();
+        //console_subscriber::init();
+        tracing_subscriber::fmt::init();
     }
-    let start_time = std::time::Instant::now();
+
+    init_ort()?;
+    init_indexing();
 
     let args = Args::parse();
+    let start_time = std::time::Instant::now();
 
     let rt = runtime::Builder::new_multi_thread()
         // Worker threads do not necessarily determine how many blocking tasks can be spawned.
@@ -101,11 +107,14 @@ fn main() -> Result<(), anyhow::Error> {
         }
 
         let data_dir = app_config::get_default_index_directory();
-        let lancedbstore = LanceDBStore::new(data_dir.as_str(), 512).await?;
+        let lancedbstore = LanceDBStore::new(data_dir.as_str(), 768).await?;
         // TODO: unwrap error handling
         let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));
 
-        println!("Indexing {} files into index stored in the directory {}", files.len(), data_dir.as_str());
+        println!("Indexing {} files into index stored in the directory {} with {} parallel jobs",
+            files.len(),
+            data_dir.as_str(),
+            args.jobs);
         let iresults = spawn_index_jobs(file_indexer.clone(), files, args.jobs).await;
         let mut isuccess = 0;
         let mut ifail = 0;
@@ -117,7 +126,10 @@ fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        println!("Clearing {} unknown files from index stored in directory {}", unknown.len(), data_dir.as_str());
+        println!("Clearing {} unknown files from index stored in directory {} with {} parallel jobs",
+            unknown.len(),
+            data_dir.as_str(),
+            args.jobs);
         let cresults = spawn_clear_jobs(file_indexer, unknown, args.jobs).await;
         let mut csuccess = 0;
         let mut cfail = 0;
@@ -138,8 +150,7 @@ fn main() -> Result<(), anyhow::Error> {
         Ok(())
     });
 
-    #[cfg(feature = "tracing")]
-    {
+    if args.metrics {
         print_metrics(&rt.metrics());
 
         let elapsed = start_time.elapsed();
@@ -149,7 +160,7 @@ fn main() -> Result<(), anyhow::Error> {
         std::io::stdin().read_line(&mut empty);
     }
 
-    result
+    Ok(result?)
 }
 
 /// Sanitizes, sorts, and dedupes a vec of PathBufs into Utf8PathBufs

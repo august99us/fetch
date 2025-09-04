@@ -1,8 +1,9 @@
 [workspace]
 members = [
-    "fetch-core",
     "fetch-cli", 
-    "fetch-gui"
+    "fetch-common",
+    "fetch-core",
+    "fetch-gui",
 ]
 resolver = "2"
 

@@ -8,10 +8,13 @@ name = "fetch-gui"
 path = "src/main.rs"
 
 [features]
+cuda = ["fetch-common/cuda"]
+qnn = ["fetch-common/qnn"]
 
 [dependencies]
 # Workspace dependencies
 fetch-core = { path = "../fetch-core" }
+fetch-common = { path = "../fetch-common" }
 
 anyhow = { workspace = true }
 camino = { workspace = true }

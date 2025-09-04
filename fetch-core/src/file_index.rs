@@ -28,7 +28,7 @@ pub enum FileIndexerError {
 /// 
 /// async fn example() -> Result<(), Box<dyn std::error::Error>> {
 ///     // Create a new vector store and file indexer
-///     let store = LanceDBStore::new("./data_dir", 512).await?;
+///     let store = LanceDBStore::new("./data_dir", 768).await?;
 ///     let indexer = FileIndexer::with(store);
 /// 
 ///     // Index a file
