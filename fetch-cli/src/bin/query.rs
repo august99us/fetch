@@ -2,7 +2,7 @@ use std::{error::Error, future::Future, pin::Pin};
 
 use clap::Parser;
 use fetch_core::{app_config, embeddable::session_pool::init_querying, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
-use fetch_util::bin::init_ort;
+use fetch_common::bin::init_ort;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]
