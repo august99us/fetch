@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use camino::Utf8PathBuf;
-use iced::{widget::{column, container, image::Handle, row, text}, Element, Length, Pixels};
+use iced::{widget::{column, container, image::Handle, row, scrollable, text}, window, Element, Length, Pixels, Subscription};
 
 use crate::gui::{widgets::file_tile::FileTile, SINGLE_PAD};
 
@@ -15,6 +15,7 @@ static PLACEHOLDER_IMAGE: LazyLock<Handle> = LazyLock::new(|| Handle::from_bytes
 pub struct ResultsArea {
     results: Vec<FileWithHandle>,
     selected_index: Option<u16>,
+    area_width: Pixels,
 }
 
 pub struct LoadPreviewRequest {
@@ -36,6 +37,16 @@ pub enum Message {
     ResultSelected(u16),
     FileOpened(Utf8PathBuf),
     FileLocationOpened(Utf8PathBuf),
+    WidthResized(Pixels),
+    ArrowKeyReleased(ArrowDirection),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ArrowDirection {
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 impl ResultsArea {
@@ -79,7 +90,52 @@ impl ResultsArea {
             },
             Message::FileLocationOpened(path) => {
                 Action::OpenFileLocation(path)
-            }
+            },
+            Message::WidthResized(new_width) => {
+                self.area_width = Pixels(new_width.0 - (10.0 + SINGLE_PAD.0 * 2.0)); // 10 for scrollbar, 2 for padding
+                Action::None
+            },
+            Message::ArrowKeyReleased(direction) => {
+                if self.results.is_empty() {
+                    return Action::None;
+                }
+                // if nothing was selected previously, assume we start at the first item
+                let current_index = self.selected_index.unwrap_or(0) as u16;
+                let grid = layout_tile_grid(self.results.len(), self.area_width);
+                let num_columns = grid[0].len() as u16;
+                let mut row_idx = current_index / num_columns;
+                let mut col_idx = current_index % num_columns;
+
+                match direction {
+                    ArrowDirection::Left => {
+                        if col_idx > 0 {
+                            col_idx -= 1;
+                        }
+                    },
+                    ArrowDirection::Right => {
+                        if col_idx < (num_columns - 1) {
+                            col_idx += 1;
+                        }
+                    },
+                    ArrowDirection::Up => {
+                        if row_idx > 0 {
+                            row_idx -= 1;
+                        }
+                    },
+                    ArrowDirection::Down => {
+                        if row_idx < (grid.len() as u16 - 1) {
+                            row_idx += 1;
+                        }
+                    },
+                }
+
+                let new_index = grid[row_idx as usize][col_idx as usize];
+                if new_index != -1 {
+                    self.selected_index = Some(new_index as u16);
+                }
+
+                Action::None
+            },
         }
 
     }
@@ -88,8 +144,10 @@ impl ResultsArea {
         if self.results.is_empty() {
             return iced::widget::text("No results to display").width(Length::Fill).height(Length::Fill).center().into();
         }
-        // Temporary 5x3
-        let grid = layout_tile_grid(self.results.len(), (TILE_WIDTH * 5.0, TILE_HEIGHT * 4.0));
+
+        // This is layout logic. there is probably a better way to do this, but i think it is not clear right now with how
+        // iced has things setup
+        let grid = layout_tile_grid(self.results.len(), self.area_width);
         let rows: Vec<Element<'_, Message>> = grid.into_iter()
             .map(|row| {
                 row.into_iter()
@@ -107,12 +165,15 @@ impl ResultsArea {
             .map(|row_elements| row(row_elements).spacing(SINGLE_PAD).into())
             .collect::<Vec<_>>();
 
-        container(column(rows).spacing(SINGLE_PAD))
-            .clip(true)
+        scrollable(column(rows).width(Length::Fill).spacing(SINGLE_PAD))
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(SINGLE_PAD)
-            .style(container::bordered_box)
+            .spacing(SINGLE_PAD)
+            .style(|theme, status| {
+                let mut style = scrollable::default(theme, status);
+                style.container = container::bordered_box(theme);
+                style
+            })
             .into()
     }
 }
@@ -145,22 +206,27 @@ fn file_tile<'a>(item: &'a FileWithHandle, index: u16, selected: bool) -> Elemen
     
     let tile = if let Some(handle) = &item.preview {
         match handle {
-            HandleOrBroken::Handle(handle) => FileTile::new(file_name, handle, selected),
+            HandleOrBroken::Handle(handle) => FileTile::new(file_name, handle, selected, TILE_WIDTH.into(), TILE_HEIGHT.into()),
             // TODO: replace with broken preview image
-            HandleOrBroken::Broken => FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected),
+            HandleOrBroken::Broken => FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected, TILE_WIDTH.into(), TILE_HEIGHT.into()),
         }
     } else {
-        FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected)
+        FileTile::new(file_name, &PLACEHOLDER_IMAGE, selected, TILE_WIDTH.into(), TILE_HEIGHT.into())
     };
     
-    tile.on_click(move || Message::ResultSelected(index))
+    tile
+        .on_click(move || Message::ResultSelected(index))
         .on_double_click(move || Message::FileOpened(path.clone()))
         .into()
 }
 
-fn layout_tile_grid(num_items: usize, cont_size: (Pixels, Pixels)) -> Vec<Vec<i16>> {
-    let n_width = (cont_size.0 / TILE_WIDTH).0 as usize;
-    let n_height = (cont_size.1 / TILE_HEIGHT).0 as usize;
+// Will always return at least a 1x1 grid for num_items > 0
+fn layout_tile_grid(num_items: usize, cont_width: Pixels) -> Vec<Vec<i16>> {
+    // first take away | PAD TILE PAD |, not allowing negatives
+    let remaining_space_for_repeats = std::cmp::max_by(cont_width.0 - (SINGLE_PAD.0 * 2.0) - TILE_WIDTH.0, 0.0, f32::total_cmp);
+    // then all the remaining repetitions look like ...TILE PAD...
+    let n_width = (remaining_space_for_repeats / (TILE_WIDTH.0 + SINGLE_PAD.0)) as usize + 1;
+    let n_height = (num_items as f32 / n_width as f32).ceil() as usize;
     let mut grid = vec![vec![0; n_width]; n_height];
 
     let mut index = 0;

@@ -20,7 +20,7 @@ name = "fetch-daemon"
 path = "src/bin/file_daemon.rs"
 
 [features]
-tracing = ["ort/tracing"]
+#tracing = ["ort/tracing"]
 cuda = ["fetch-common/cuda"]
 qnn = ["fetch-common/qnn"]
 
@@ -43,4 +43,4 @@ notify = "8.0.0"
 notify-debouncer-full = { version = "0.5.0", features = ["crossbeam-channel"] }
 tokio-util = "0.7.15"
 tracing-subscriber = { version = "0.3", features = [ "env-filter", "fmt" ] }
-ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "load-dynamic"] }
+#ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "load-dynamic"] }

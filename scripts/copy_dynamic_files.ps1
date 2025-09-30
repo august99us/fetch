@@ -1,4 +1,5 @@
 # Script to copy ONNX runtime libraries and models to target directory
+# Env variable $ONNX_BUILD_PATH must be set to the directory containing the lib files or dylibs will not be copied
 # Usage: .\copy_dynamic_files.ps1 <profile> <use_symlinks>
 # Arguments:
 #   profile: "debug" or "release"

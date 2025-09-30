@@ -3,7 +3,7 @@ use std::{borrow::Cow, ops::{AddAssign, SubAssign}};
 use camino::Utf8PathBuf;
 use fetch_common::bin::init_ort;
 use fetch_core::embeddable::session_pool::init_querying;
-use iced::{task::Handle, widget::{button, column, container, horizontal_rule, horizontal_space, row, stack, text, text_input, vertical_space}, Alignment, Element, Font, Length, Pixels, Size, Task, Theme};
+use iced::{keyboard, task::Handle, widget::{button, column, container, horizontal_rule, horizontal_space, row, stack, text, text_input, vertical_space}, window, Alignment, Element, Font, Length, Pixels, Size, Subscription, Task, Theme};
 
 use crate::gui::{tasks::{generate_or_retrieve_preview, run_index_query}, widgets::results_area::{self, ResultsArea}};
 
@@ -19,6 +19,7 @@ pub fn run_fetch_application() -> iced::Result {
     settings.default_font = Font::with_name("Inter 18pt");
 
     iced::application(SearchPage::boot, SearchPage::update, SearchPage::view)
+        .subscription(SearchPage::subscription)
         .title("Fetch")
         .window_size(Size::new(1075.0, 700.0))
         .settings(settings)
@@ -111,6 +112,38 @@ impl SearchPage {
                 Task::none()
             },
         }
+    }
+
+    pub fn subscription(&self) -> Subscription<SearchPageMessage> {
+        Subscription::batch(vec![
+            window::resize_events().map(|(_id, new_size)| {
+                SearchPageMessage::ResultsAreaMessage(
+                    // 2 pads on either side of results area
+                    results_area::Message::WidthResized(Pixels(new_size.width - (SINGLE_PAD.0 * 2.0)))
+                )
+            }),
+            keyboard::on_key_release(|key, _mods| {
+                match key {
+                    keyboard::Key::Named(keyboard::key::Named::ArrowLeft) => 
+                        Some(SearchPageMessage::ResultsAreaMessage(
+                            results_area::Message::ArrowKeyReleased(results_area::ArrowDirection::Left)
+                        )),
+                    keyboard::Key::Named(keyboard::key::Named::ArrowRight) => 
+                        Some(SearchPageMessage::ResultsAreaMessage(
+                            results_area::Message::ArrowKeyReleased(results_area::ArrowDirection::Right)
+                        )),
+                    keyboard::Key::Named(keyboard::key::Named::ArrowUp) => 
+                        Some(SearchPageMessage::ResultsAreaMessage(
+                            results_area::Message::ArrowKeyReleased(results_area::ArrowDirection::Up)
+                        )),
+                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => 
+                        Some(SearchPageMessage::ResultsAreaMessage(
+                            results_area::Message::ArrowKeyReleased(results_area::ArrowDirection::Down)
+                        )),
+                    _ => None,
+                }
+            }),
+        ])
     }
 
     pub fn view(&self) -> Element<'_, SearchPageMessage> {

@@ -21,33 +21,23 @@ where
     Theme: text::Catalog + Catalog + 'a,
     Renderer: image::Renderer<Handle = Handle> + advanced::text::Renderer + 'a,
 {
-    pub fn new(file_name: String, preview: &Handle, selected: bool) -> Self {
+    pub fn new(file_name: String, preview: &Handle, selected: bool, width: Length, height: Length) -> Self {
         let image = iced::widget::image(preview).height(Length::Fill);
 
         let content = column![image, text(file_name.clone())]
-                    .height(Length::Fill)
-                    .width(Length::Fill)
+                    .width(width)
+                    .height(height)
                     .align_x(Horizontal::Center)
                     .padding(SINGLE_PAD).into();
 
         Self {
-            width: Length::Fill,
-            height: Length::Fill,
+            width: width,
+            height: height,
             content,
             selected,
             on_click: None,
             on_double_click: None,
         }
-    }
-
-    pub fn width(mut self, width: Length) -> Self {
-        self.width = width;
-        self
-    }
-    
-    pub fn height(mut self, height: Length) -> Self {
-        self.height = height;
-        self
     }
 
     pub fn on_click<F>(mut self, f: F) -> Self
@@ -165,8 +155,8 @@ where
         // Handle mouse events, clicks, etc.
         if let Event::Mouse(mouse_event) = event {
             if is_over {
-                shell.capture_event();
                 if let mouse::Event::ButtonPressed(mouse::Button::Left) = mouse_event {
+                    shell.capture_event();
                     let now = Instant::now();
                     let threshold = get_double_click_threshold();
 
