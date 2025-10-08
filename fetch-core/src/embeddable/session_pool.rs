@@ -15,7 +15,13 @@ pub static TEXT_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {
 });
 
 pub static TEXT_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
-    Tokenizer::from_file(TOKENIZER_PATH).expect("Error loading tokenizer from file")
+    let exe_loc = std::env::current_exe()
+        .expect("Failed to get current executable path")
+        .parent()
+        .expect("Failed to get parent directory of executable")
+        .to_owned();
+
+    Tokenizer::from_file(exe_loc.join(TOKENIZER_PATH)).expect("Error loading tokenizer from file")
 });
 
 /// Init function that retrieves indexing resources and then immediately drops them to initialize lazy cells
@@ -26,7 +32,6 @@ pub fn init_indexing() {
 /// Init function that retrieves querying resources and then immediately drops them to initialize lazy cells
 pub fn init_querying() {
     TEXT_SESSION_POOL.get_session();
-    TEXT_TOKENIZER.encode("hi", false);
 }
 
 pub type SessionPool = Arc<Vec<Mutex<Session>>>;
@@ -63,9 +68,15 @@ pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
                     .with_intra_threads(4)
                     .expect("Failed to set intra threads");
 
+                let exe_loc = std::env::current_exe()
+                    .expect("Failed to get current executable path")
+                    .parent()
+                    .expect("Failed to get parent directory of executable")
+                    .to_owned();
+
                 let session_result = match pool_type {
-                    PoolType::Image => session_builder.commit_from_file(IMAGE_MODEL_PATH),
-                    PoolType::Text => session_builder.commit_from_file(TEXT_MODEL_PATH),
+                    PoolType::Image => session_builder.commit_from_file(exe_loc.join(IMAGE_MODEL_PATH)),
+                    PoolType::Text => session_builder.commit_from_file(exe_loc.join(TEXT_MODEL_PATH)),
                 };
 
                 Mutex::new(session_result.expect("Failed to commit model from memory"))

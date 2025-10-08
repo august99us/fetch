@@ -40,6 +40,11 @@ impl<I: IndexVector + QueryVectorKeys + Send + Sync> QueryFiles for FileIndexer<
     }
 
     async fn query_n(&self, file_description: &str, num_results: u32, page: u32) -> Result<FileQuerying::Result, FileQuerying::Error> {
+        if page == 0 {
+            return Err(FileQuerying::Error { query: file_description.to_string(), 
+                source: anyhow::Error::msg("Page number must be 1 or greater"), r#type: FileQuerying::ErrorType::Query });
+        }
+
         let query_vector = file_description.calculate_embedding().await.map_err(|e| 
             FileQuerying::Error { query: file_description.to_string(), source: e.into(), r#type: FileQuerying::ErrorType::Embedding })?;
 
