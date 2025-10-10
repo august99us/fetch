@@ -1,8 +1,9 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { goto } from "$app/navigation";
   import { fade } from "svelte/transition";
   import { onMount } from "svelte";
+  import { getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window";
+  import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   let query = $state("");
   let loading = $state(false);
@@ -10,44 +11,30 @@
   let selectedIndex = $state(-1);
   let shifted = $state(false);
 
-  let timeoutQuery: string | undefined;
-  let timeoutId: number | undefined;
-  function queryChanged() {
-    if (timeoutQuery !== query) {
-      // any selections are no longer valid
-      selectedIndex = -1;
-
-      // query text is not the query we are running right now
-      timeoutQuery = query;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = undefined;
-      }
-
-      // if we have a non-empty query, start a search
-      if (query && query !== "") {
-        loading = true;
-        timeoutId = setTimeout(() => {
-          fireQuery(timeoutQuery!);
-          timeoutId = undefined;
-        }, 500);
-      } else {
-        // cancel any existing searches
-        //
-        // This is done right now by noting down the query that the timeout was fired for,
-        // and ignoring any searches return with a query no longer matching that query.
-        // This will result in extra searches being performed for now.
-      }
-    }
-  }
-
+  // Meta actions for the entire page ///////////////////////////////
   function progress() {
     console.log("progress called");
     if (selectedIndex >= 0 && selectedIndex < results.length) {
       openIndex(selectedIndex);
     } else {
-      goto("/full");
+      openFull();
     }
+    closeCurrent();
+  }
+
+  function openFull() {
+    const currentWindow = getCurrentWindow();
+    console.log("openFull called");
+    const fullWindow = new WebviewWindow('full', {
+      url: "/search",
+      title: "Fetch",
+      width: 800,
+      height: 600,
+    });
+
+    fullWindow.once('tauri://created', function () {
+      currentWindow.close();
+    })
   }
 
   function openIndex(index: number) {
@@ -75,6 +62,45 @@
     }
   }
 
+  function closeCurrent() {
+    const currentWindow = getCurrentWindow();
+    currentWindow.close();
+  }
+
+  // Query change tracking and handling ///////////////////////////////
+  let timeoutQuery: string | undefined;
+  let timeoutId: number | undefined;
+  function queryChanged() {
+    if (timeoutQuery !== query) {
+      // any selections and results are no longer valid
+      selectedIndex = -1;
+      results = [];
+
+      // query text is not the query we are running right now
+      timeoutQuery = query;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = undefined;
+      }
+
+      // if we have a non-empty query, start a search
+      if (query && query !== "") {
+        loading = true;
+        timeoutId = setTimeout(() => {
+          fireQuery(timeoutQuery!);
+          timeoutId = undefined;
+        }, 500);
+      } else {
+        loading = false;
+        // cancel any existing searches
+        //
+        // This is done right now by noting down the query that the timeout was fired for,
+        // and ignoring any searches return with a query no longer matching that query.
+        // This will result in extra searches being performed for now.
+      }
+    }
+  }
+
   function fireQuery(query: string) {
     console.log("Searching for: " + query);
     queryIndex(query)
@@ -99,11 +125,11 @@
     path: string;
     score: number;
   }
-
   async function queryIndex(query: string): Promise<[string, QueryResult[]]> {
     return [query, await invoke("query", { query, page: 1 })];
   }
 
+  // JSX content functions and page utilities //////////////////////////////
   function parseResultName(result: QueryResult): string {
     return result.name;
   }
@@ -115,6 +141,12 @@
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Shift') {
       shifted = true;
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      closeCurrent();
+      return;
     }
 
     if (results.length !== 0) {
@@ -134,7 +166,16 @@
     }
   }
 
-  function handleResultMouseEnter(index: number) {
+  let lastMousePositionResult = { x: 0, y: 0 };
+  function handleResultMouseOver(event: MouseEvent, index: number) {
+    // Only update selection if the mouse actually moved
+    if (event.clientX !== lastMousePositionResult.x || event.clientY !== lastMousePositionResult.y) {
+      lastMousePositionResult = { x: event.clientX, y: event.clientY };
+      selectedIndex = index;
+    }
+  }
+
+  function handleResultFocus(index: number) {
     selectedIndex = index;
   }
 
@@ -143,21 +184,75 @@
     openIndex(selectedIndex);
   }
 
+  let mainContainer: HTMLElement;
+  async function resizeWindowToContent() {
+    try {
+      const appWindow = getCurrentWindow();
+      const bodyWidth = mainContainer.offsetWidth;
+      const bodyHeight = mainContainer.offsetHeight;
+
+      await appWindow.setSize(new PhysicalSize(bodyWidth, bodyHeight));
+    } catch (error) {
+      console.error("Error resizing window:", error);
+    }
+  }
+
+  function setMaxHeight() {
+    if (mainContainer) {
+      const maxHeight = window.screen.availHeight * 0.7;
+      mainContainer.style.maxHeight = `${maxHeight}px`;
+    }
+  }
+
   onMount(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+
+    // Set max height and resize window initially
+    setMaxHeight();
+    resizeWindowToContent();
+
+    // Use ResizeObserver to watch for actual size changes
+    const resizeObserver = new ResizeObserver(() => {
+      resizeWindowToContent();
+    });
+
+    if (mainContainer) {
+      resizeObserver.observe(mainContainer);
+    }
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      resizeObserver.disconnect();
     };
+  });
+
+  // Scroll selected item into view
+  let resultElements: HTMLButtonElement[] = [];
+  $effect(() => {
+    if (selectedIndex >= 0 && selectedIndex < resultElements.length) {
+      resultElements[selectedIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
   });
 </script>
 
-<main class="container">
-  <div id="search-container">
+<main class="container" bind:this={mainContainer}>
+  <div id="search-container" data-tauri-drag-region>
     <form id="search-form" onsubmit={progress}>
       <span id="search-bar">
-        <input id="search-input" type="text" placeholder="Start typing to search or press enter to open full app." bind:value={query} oninput={queryChanged} />
+        <!-- svelte-ignore a11y_autofocus // element is not conditionally loaded -->
+        <input
+          id="search-input"
+          type="text"
+          placeholder="Start typing to search or press enter to open full app."
+          bind:value={query}
+          oninput={queryChanged}
+          autofocus
+        />
         <button type="submit" class="logo-button">
           <img src="/fetch.svg" class="logo" alt="Fetch Logo" />
         </button>
@@ -166,17 +261,17 @@
     {#if loading||(results.length > 0)}
       <div id="results-container">
         {#if loading}
-          <div class="spinner" in:fade></div>
-        {/if}
-        {#if loading}
+          <div class="spinner centered-above" in:fade={{ duration: 200 }}></div>
           <div class="spinner-placeholder"></div>
         {:else}
           {#each results as result, index}
             <button
+              bind:this={resultElements[index]}
               class="result-item"
               class:selected={index === selectedIndex}
               transition:fade
-              onmouseenter={() => handleResultMouseEnter(index)}
+              onmouseover={(e) => handleResultMouseOver(e, index)}
+              onfocus={() => handleResultFocus(index)}
               onclick={() => handleResultClick(index)}
             >
               <span class="result-name">{parseResultName(result)}</span>
@@ -190,133 +285,62 @@
 </main>
 
 <style>
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 300;
-  src: url('/fonts/Inter/Inter_24pt-Light.ttf') format('truetype');
-}
-
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 400;
-  src: url('/fonts/Inter/Inter_24pt-Regular.ttf') format('truetype');
-}
-
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 500;
-  src: url('/fonts/Inter/Inter_24pt-Medium.ttf') format('truetype');
-}
-
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 600;
-  src: url('/fonts/Inter/Inter_24pt-SemiBold.ttf') format('truetype');
-}
-
 :root {
   /* Color variables */
-  --color-text: #0f0f0f;
-  --color-background: #f6f6f6;
-  --color-section-bg: rgba(150, 150, 150, 0.1);
-  --color-section-border: var(--color-background);
-  --color-input-bg: rgba(255, 255, 255, 0.95);
-  --color-input-bg-focus: rgba(255, 255, 255, 0.95);
-  --color-input-border: rgba(0, 0, 0, 0.15);
-  --color-placeholder: rgba(15, 15, 15, 0.4);
-  --color-accent-glow: rgba(0, 0, 0, 0.3);
-  --logo-opacity: 0.9;
   --backdrop-blur: 0px;
-
-  /* Shadow variables */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.15);
-  --shadow-focus: 0 4px 12px rgba(0, 0, 0, 0.1);
-
-  /* Spinner variables */
-  --color-spinner-bg: rgba(0, 0, 0, 0.1);
-  --color-spinner-fg: rgba(0, 0, 0, 0.5);
 
   /* Result item variables */
   --color-result-selected-bg: rgba(0, 0, 0, 0.1);
   --color-result-descriptor: rgba(15, 15, 15, 0.5);
 
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
   color: var(--color-text);
-  background-color: var(--color-background);
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  background-color: rgba(0, 0, 0, 0);
 }
 
 :global(body) {
-  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 .container {
-  padding: 0 0.5rem;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: top;
   align-items: center;
   text-align: center;
-  min-height: 100vh;
+  width: 100vw;
+  min-width: 100vw;
+  max-width: 100vw;
+  margin: 0;
+  padding: 0.5rem;
+  box-sizing: border-box;
 }
 
 #search-container {
   width: 100%;
+  min-width: 0;
   max-width: 1200px;
-  height: 100%;
+  max-height: 100%;
   padding: 0.5rem;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  flex-direction: column;
   gap: 0.75rem;
+  flex-shrink: 0;
   border: 1px solid var(--color-section-border);
   border-radius: 10px;
   background-color: var(--color-section-bg);
   transition: all 0.3s ease;
+  box-sizing: border-box;
+  user-select: none;
+  overflow: hidden;
 }
 
 #search-form {
   width: 100%;
   display: flex;
   justify-content: center;
-}
-
-.logo-button {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo {
-  height: 4em;
-  will-change: filter;
-  transition: filter 0.3s ease;
-  opacity: var(--logo-opacity);
-}
-
-.logo-button:hover {
-  filter: drop-shadow(0 0 1em var(--color-accent-glow));
-  opacity: 1;
 }
 
 #search-bar {
@@ -349,54 +373,29 @@
 }
 
 #search-input::placeholder {
-  color: var(--color-placeholder);
+  color: var(--color-input-placeholder);
 }
 
 #results-container {
   position: relative;
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.spinner {
-  /* Center the spinner in container */
+.centered-above {
+  /* Center the element in container and place above everything */
   position: absolute;
-  left: 0;
-  margin-left: auto;
-  right: 0;
-  margin-right: auto;
-  top: 0;
-  margin-top: auto;
-  bottom: 0;
-  margin-bottom: auto;
-  width: fit-content;
-  height: fit-content;
-  /* Spinner styles */
-  border: 4px solid var(--color-spinner-bg);
-  border-top: 4px solid var(--color-spinner-fg);
-  border-radius: 50%;
-  width: 2rem;
-  height: 2rem;
-  animation: spin 1s linear infinite; /* Apply the spin animation */
-  z-index: 9;
-}
-
-.spinner-placeholder {
-  width: 2rem;
-  height: 2rem;
-  margin: 0.5rem;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg); /* Start at 0 degrees rotation */
-  }
-  100% {
-    transform: rotate(360deg); /* End at 360 degrees rotation */
-  }
+  margin: auto;
+  inset: 0;
+  z-index: 99;
 }
 
 .result-item {
@@ -443,27 +442,9 @@
   min-width: 3rem;
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --color-text: #f6f6f6;
-    --color-background: rgba(20, 20, 20, 0.95);
-    --color-section-bg: rgba(45, 45, 45, 0.9);
-    --color-section-border: rgba(170, 170, 170, 0.1);
-    --color-input-bg: rgba(40, 40, 40, 0.8);
-    --color-input-bg-focus: rgba(45, 45, 45, 0.9);
-    --color-input-border: rgba(200, 200, 200, 0.15);
-    --color-placeholder: rgba(246, 246, 246, 0.35);
-    --color-accent-glow: rgba(50, 50, 50, 0.95);
-    --logo-opacity: 0.85;
     --backdrop-blur: 20px;
-
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.4);
-    --shadow-focus: 0 4px 12px rgba(0, 0, 0, 0.25);
-    
-    --color-spinner-bg: rgba(255, 255, 255, 0.15);
-    --color-spinner-fg: rgba(255, 255, 255, 0.3);
 
     --color-result-selected-bg: rgba(255, 255, 255, 0.1);
     --color-result-descriptor: rgba(246, 246, 246, 0.5);

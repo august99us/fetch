@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "fetch-tauri",
-        "width": 800,
-        "height": 600
+        "label": "quick",
+        "url": "/",
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
