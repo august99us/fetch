@@ -12,59 +12,55 @@
   let shifted = $state(false);
 
   // Meta actions for the entire page ///////////////////////////////
-  function progress() {
-    console.log("progress called");
+  async function progress() {
     if (selectedIndex >= 0 && selectedIndex < results.length) {
-      openIndex(selectedIndex);
+      await openIndex(selectedIndex);
     } else {
-      openFull();
+      await openFull();
     }
-    closeCurrent();
+    await setTimeout(() => {
+      closeCurrent();
+    }, 50);
   }
 
-  function openFull() {
-    const currentWindow = getCurrentWindow();
-    console.log("openFull called");
+  async function openFull() {
     const fullWindow = new WebviewWindow('full', {
       url: "/search",
       title: "Fetch",
-      width: 800,
-      height: 600,
+      width: 1200,
+      height: 900,
     });
 
-    fullWindow.once('tauri://created', function () {
-      currentWindow.close();
+    await fullWindow.once('tauri://created', function () {
+      console.log("Full window created");
     })
   }
 
-  function openIndex(index: number) {
+  async function openIndex(index: number) {
     const result = results[index];
     if (shifted) {
       // open location
       console.log("Opening result location: " + result);
-      invoke("open_location", { path: result.path })
-        .then(() => {
-          console.log("Opened result location: " + result);
-        })
-        .catch((e) => {
-          console.error("Error opening for result location: " + e);
-        });
-      return;
+      try {
+        await invoke("open_location", { path: result.path });
+        console.log("Opened result location: " + result);
+      } catch (e) {
+        console.error("Error opening for result location: " + e);
+      }
     } else {
       console.log("Opening result: " + result);
-      invoke("open", { path: result.path })
-        .then(() => {
-          console.log("Opened result: " + result);
-        })
-        .catch((e) => {
-          console.error("Error opening result: " + e);
-        });
+      try {
+        await invoke("open", { path: result.path });
+        console.log("Opened result: " + result);
+      } catch (e) {
+        console.error("Error opening result: " + e);
+      }
     }
   }
 
-  function closeCurrent() {
+  async function closeCurrent() {
     const currentWindow = getCurrentWindow();
-    currentWindow.close();
+    await currentWindow.close();
   }
 
   // Query change tracking and handling ///////////////////////////////
@@ -330,7 +326,7 @@
   flex-shrink: 0;
   border: 1px solid var(--color-section-border);
   border-radius: 10px;
-  background-color: var(--color-section-bg);
+  background-color: var(--color-background);
   transition: all 0.3s ease;
   box-sizing: border-box;
   user-select: none;
@@ -354,13 +350,12 @@
 #search-input {
   flex: 1;
   min-width: 0;
-  padding: 0.75em 1.25em;
+  padding: 0.75rem 1.25rem;
   font-size: 1.25rem;
   font-family: inherit;
   border: 1px solid var(--color-input-border);
-  border-radius: 10px;
+  border-radius: 2rem;
   background-color: var(--color-input-bg);
-  box-shadow: var(--shadow-md), var(--shadow-sm);
   outline: none;
   transition: all 0.2s ease;
   color: var(--color-text);
@@ -369,7 +364,6 @@
 
 #search-input:focus {
   background-color: var(--color-input-bg-focus);
-  box-shadow: var(--shadow-lg), var(--shadow-focus);
 }
 
 #search-input::placeholder {

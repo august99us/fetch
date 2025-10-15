@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use camino::Utf8Path;
-use fetch_core::{app_config, file_index::{query_files::QueryFiles, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, file_index::{query_files::QueryFiles, FileIndexer}, previewable::PossiblyPreviewable, vector_store::lancedb_store::LanceDBStore};
 use serde::Serialize;
 
 use crate::utility::open_file_with_default_app;
@@ -36,6 +36,16 @@ async fn query(query: &str, page: u32) -> Result<Vec<QueryResult>, String> {
 }
 
 #[tauri::command]
+async fn preview(path: &str) -> Result<Option<String>, String> {
+    let path = Utf8Path::new(path);
+    match path.preview().await {
+        Ok(Some(previewed_file)) => Ok(Some(previewed_file.preview_path.to_string())),
+        Ok(None) => Ok(None),
+        Err(e) => Err(format!("Error while getting preview: {}", e.to_string())),
+    }
+}
+
+#[tauri::command]
 async fn open(path: &str) -> Result<(), String> {
     let path = Utf8Path::new(path);
     open_file_with_default_app(path)
@@ -53,7 +63,7 @@ async fn open_location(path: &str) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![query, open, open_location])
+        .invoke_handler(tauri::generate_handler![query, open, open_location, preview])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

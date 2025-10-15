@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "fullapp",
+  "description": "Capability for the full app window",
+  "windows": ["full"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:window:default",
+    "core:window:allow-close"
+  ]
+}

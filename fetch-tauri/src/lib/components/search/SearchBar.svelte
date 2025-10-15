@@ -21,7 +21,7 @@
   <input
     type="text"
     class="search-input"
-    placeholder="Enter query here..."
+    placeholder="Enter search query..."
     bind:value={query}
     disabled={disabled}
   />
@@ -37,19 +37,19 @@
 <style>
   .search-bar {
     display: flex;
-    gap: 0.3125em;
+    gap: 1rem;
     width: 100%;
   }
 
   .search-input {
     flex: 1;
-    padding: 0.3125em;
+    padding: 0.3rem 1.2rem;
     font-family: inherit;
     font-size: 1em;
     border: 1px solid var(--color-input-border);
     background-color: var(--color-input-bg);
     color: var(--color-text);
-    border-radius: 0.25em;
+    border-radius: 1rem;
     outline: none;
     transition: all 0.15s ease;
   }
@@ -60,7 +60,7 @@
   }
 
   .search-input::placeholder {
-    color: var(--color-placeholder);
+    color: var(--color-input-placeholder);
   }
 
   .search-input:disabled {
@@ -69,19 +69,19 @@
   }
 
   .search-button {
-    padding: 0.3125em 1em;
+    padding: 0.3rem 1.2rem;
     font-family: inherit;
     font-size: 1em;
-    border: 1px solid var(--color-input-border);
-    background-color: var(--color-button-bg);
-    color: var(--color-text);
-    border-radius: 0.25em;
+    border: 0;
+    background-color: var(--color-button-primary-bg);
+    color: var(--color-button-primary);
+    border-radius: 1rem;
     cursor: pointer;
     transition: background-color 0.15s ease;
   }
 
   .search-button:hover:not(:disabled) {
-    background-color: var(--color-button-bg-hover);
+    background-color: var(--color-button-primary-bg-hover);
   }
 
   .search-button:disabled {
