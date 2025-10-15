@@ -19,16 +19,15 @@
   let {
     file,
     selected = false,
-    width = 12,
-    height = 9,
+    width = 20,
+    height = 15,
     onselect,
     onopen,
     onhover
   }: Props = $props();
 
-  let previewUriPromise = $derived(previewPath(file.path))
-
   let buttonElement: HTMLButtonElement | undefined = $state();
+  let previewUriPromise = $derived(previewPath(file.path))
 
   function handleClick() {
     onselect?.();
@@ -44,8 +43,11 @@
     }
   }
 
-  export function scrollIntoView(options?: ScrollIntoViewOptions) {
-    buttonElement?.scrollIntoView(options);
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleDoubleClick();
+    }
   }
 
   async function previewPath(path: string): Promise<string> {
@@ -56,6 +58,12 @@
       return '/broken.png';
     }
   }
+
+  $effect(() => {
+    if (selected) {
+      buttonElement?.focus();
+    }
+  });
 </script>
 
 <button
@@ -66,6 +74,7 @@
   style="width: {width}rem; height: {height}rem;"
   onclick={handleClick}
   ondblclick={handleDoubleClick}
+  onkeydown={handleKeyDown}
   onmouseenter={handleMouseEnter}
 >
   <div class="preview-container">

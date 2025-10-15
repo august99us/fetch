@@ -21,7 +21,7 @@ async fn query(query: &str, page: u32) -> Result<Vec<QueryResult>, String> {
         .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
     let file_indexer = FileIndexer::with(lancedbstore);
 
-    file_indexer.query(&query, Some(page))
+    file_indexer.query_n(&query, 12, page)
         .await
         .map(|result| {
             result.into_iter()

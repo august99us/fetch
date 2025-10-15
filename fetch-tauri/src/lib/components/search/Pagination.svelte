@@ -8,7 +8,7 @@
 
   let {
     currentPage = $bindable(1),
-    totalPages = 7,
+    totalPages = 0,
     disabled = false,
     onchangepage,
   }: Props = $props();
@@ -30,16 +30,14 @@
   async function handlePrevious() {
     if (!disabled && currentPage > 1) {
       let newPage = currentPage - 1;
-      await onchangepage?.(newPage);
-      currentPage = newPage;
+      await changePage(newPage);
     }
   }
 
-  function handleNext() {
-    if (!disabled && currentPage < totalPages) {
+  async function handleNext() {
+    if (!disabled && (currentPage < totalPages || totalPages === 0)) {
       let newPage = currentPage + 1;
-      onchangepage?.(newPage);
-      currentPage = newPage;
+      await changePage(newPage);
     }
   }
 </script>

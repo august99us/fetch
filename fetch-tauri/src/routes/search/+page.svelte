@@ -16,52 +16,45 @@
   interface FileResult {
     path: string;
     name: string;
-    previewUri?: string;
   }
 
   let query = $state("");
   let currentPage = $state(1);
   let loading = $state(false);
-  let results = $state<FileResult[]>([]);
-  let selectedIndex = $state(-1);
-
-  let resultsArea: ResultsArea;
+  let resultsPromise = $state<Promise<FileResult[]> | undefined>(undefined);
+  let resultsArea: ResultsArea | undefined = $state();
 
   // TODO: Implement query execution
   async function handleSearch(searchQuery: string, page: number = 1) {
     if (!searchQuery || searchQuery.trim() === "") {
-      results = [];
-      selectedIndex = -1;
+      resultsPromise = undefined;
       return;
     }
 
     loading = true;
     try {
       // Call the Tauri query command
-      const queryResults: QueryResult[] = await invoke("query", {
+      resultsPromise = invoke<QueryResult[]>("query", {
         query: searchQuery,
-        page: currentPage
-      });
-
+        page
+      })
       // Transform results to FileResult format
-      results = queryResults.map(result => ({
-        path: result.path,
-        name: result.name,
-        previewUri: undefined // TODO: Implement preview loading
-      }));
-
-      selectedIndex = results.length > 0 ? 0 : -1;
+      .then((resArray: QueryResult[]) => 
+        resArray.map((value: QueryResult): FileResult => { 
+          return { path: value.path, name: value.name };
+        })
+      );
     } catch (error) {
       console.error("Error querying index:", error);
-      results = [];
-      selectedIndex = -1;
+      resultsPromise = undefined;
     } finally {
       loading = false;
     }
   }
 
   async function handleChangePage(newPage: number) {
-    handleSearch(query, newPage);
+    console.log("Changing to page:", newPage);
+    await handleSearch(query, newPage);
   }
 
   // TODO: Implement file opening
@@ -72,14 +65,9 @@
       .catch((e) => console.error("Error opening file:", e));
   }
 
-  // TODO: Implement result selection
-  function handleSelectResult(index: number) {
-    selectedIndex = index;
-  }
-
   // Keyboard navigation
   function handleKeyDown(event: KeyboardEvent) {
-    if (results.length === 0) return;
+    if (!resultsArea) return;
 
     switch (event.key) {
       case 'ArrowLeft':
@@ -119,22 +107,36 @@
   <Filtering />
 
   <div class="results-container">
-    {#if loading}
-      <div class="spinner centered-above"></div>
+    {#if resultsPromise}
+      {#await resultsPromise}
+        <div class="spinner centered-above"></div>
+        <ResultsArea
+          bind:this={resultsArea}
+          results = {[]}
+          disabled={loading}
+        />
+      {:then results}
+        <ResultsArea
+          bind:this={resultsArea}
+          {results}
+          disabled={loading}
+          onopen={handleOpenFile}
+        />
+      {:catch error}
+        <div>
+          <p>Error loading results</p>
+        </div>
+      {/await}
+    {:else}
+      <div class="empty-state" class:disabled={loading}>
+        <p>Nothing yet!</p>
+      </div>
     {/if}
-    <ResultsArea
-      bind:this={resultsArea}
-      {results}
-      {selectedIndex}
-      disabled={loading}
-      onselect={handleSelectResult}
-      onopen={handleOpenFile}
-    />
   </div>
 
   <Pagination
     bind:currentPage
-    disabled={results.length == 0 || loading}
+    disabled={!resultsArea || loading}
     onchangepage={handleChangePage}
   />
 </main>
@@ -164,6 +166,21 @@
     display: flex;
     flex: 1 1 0;
     min-height: 0;
+  }
+
+  .empty-state {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: top;
+    justify-content: center;
+    color: var(--color-input-placeholder);
+    font-size: 1.1em;
+  }
+
+  .empty-state.disabled {
+    opacity: 0.6;
+    filter: grayscale(100%);
   }
 
   .centered-above {
