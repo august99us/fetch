@@ -4,11 +4,12 @@
   --color-text: #000000;
   --color-background: #ffffff;
   --color-section-bg: rgba(250, 250, 250, 1);
+  --color-section-bg-hover: rgba(240, 240, 240, 1);
   --color-section-border: rgba(175, 175, 175, 1);
   --color-input-bg: #ffffff;
   --color-input-bg-focus: #ffffff;
-  --color-input-border: #252525;
-  --color-input-border-focus: rgba(0, 0, 0, 0.3);
+  --color-input-border: rgba(0, 0, 0, 0.3);
+  --color-input-border-focus: #252525;
   --color-input-placeholder: rgba(15, 15, 15, 0.4);
   --color-select-bg: #e6e6e6;
   --color-accent-glow: (0, 0, 0, 0.3);

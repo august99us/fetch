@@ -310,6 +310,11 @@
   margin: 0;
   padding: 0.5rem;
   box-sizing: border-box;
+
+  user-select: none;
+  -webkit-user-select: none; /* For Safari */
+  -moz-user-select: none;    /* For Firefox */
+  -ms-user-select: none;     /* For Internet Explorer/Edge */
 }
 
 #search-container {

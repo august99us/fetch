@@ -5,6 +5,7 @@
   import SearchBar from "$lib/components/search/SearchBar.svelte";
   import ResultsArea from "$lib/components/search/ResultsArea.svelte";
   import Pagination from "$lib/components/search/Pagination.svelte";
+  import IndexDrawer from "$lib/components/index/IndexDrawer.svelte";
   import "$lib/styles/colors.css";
 
   interface QueryResult {
@@ -23,6 +24,7 @@
   let loading = $state(false);
   let resultsPromise = $state<Promise<FileResult[]> | undefined>(undefined);
   let resultsArea: ResultsArea | undefined = $state();
+  let indexDrawerOpen = $state(false);
 
   // TODO: Implement query execution
   async function handleSearch(searchQuery: string, page: number = 1) {
@@ -139,6 +141,10 @@
     disabled={!resultsArea || loading}
     onchangepage={handleChangePage}
   />
+
+  <IndexDrawer
+    bind:isOpen={indexDrawerOpen}
+  />
 </main>
 
 <style>
@@ -159,6 +165,11 @@
     overflow: hidden;
     padding: 1.5rem 1.5rem 1.1rem 1.5rem;
     gap: 1rem;
+
+    user-select: none;
+    -webkit-user-select: none; /* For Safari */
+    -moz-user-select: none;    /* For Firefox */
+    -ms-user-select: none;     /* For Internet Explorer/Edge */
   }
 
   .results-container {
@@ -174,6 +185,7 @@
     display: flex;
     align-items: top;
     justify-content: center;
+    padding-top: 5rem;
     color: var(--color-input-placeholder);
     font-size: 1.1em;
   }
@@ -184,7 +196,7 @@
   }
 
   .centered-above {
-    /* Center the element in container and place above everything */
+    /* Center the element in container and place above everything in the floor */
     position: absolute;
     margin: auto;
     inset: 0;

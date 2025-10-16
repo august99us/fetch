@@ -2,10 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use fetch_common::bin::init_ort;
-use fetch_core::embeddable::session_pool::init_querying;
+use fetch_core::embeddable::session_pool::{init_indexing, init_querying};
 
 fn main() {
     init_ort().expect("Failed initializing ort");
+    init_indexing();
     init_querying();
     fetch_tauri_lib::run()
 }
