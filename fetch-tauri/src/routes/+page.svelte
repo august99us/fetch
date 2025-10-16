@@ -186,6 +186,7 @@
       const appWindow = getCurrentWindow();
       const bodyWidth = mainContainer.offsetWidth;
       const bodyHeight = mainContainer.offsetHeight;
+      console.log(`Resizing window to content: ${bodyWidth}x${bodyHeight}`);
 
       await appWindow.setSize(new PhysicalSize(bodyWidth, bodyHeight));
     } catch (error) {
@@ -255,7 +256,7 @@
       </span>
     </form>
     {#if loading||(results.length > 0)}
-      <div id="results-container">
+      <div id="results-container" class:loading>
         {#if loading}
           <div class="spinner centered-above" in:fade={{ duration: 200 }}></div>
           <div class="spinner-placeholder"></div>
@@ -285,10 +286,6 @@
   /* Color variables */
   --backdrop-blur: 0px;
 
-  /* Result item variables */
-  --color-result-selected-bg: rgba(0, 0, 0, 0.1);
-  --color-result-descriptor: rgba(15, 15, 15, 0.5);
-
   color: var(--color-text);
   background-color: rgba(0, 0, 0, 0);
 }
@@ -296,6 +293,7 @@
 :global(body) {
   margin: 0;
   padding: 0;
+  overflow: hidden;
 }
 
 .container {
@@ -308,7 +306,8 @@
   min-width: 100vw;
   max-width: 100vw;
   margin: 0;
-  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
   box-sizing: border-box;
 
   user-select: none;
@@ -329,8 +328,8 @@
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
-  border: 1px solid var(--color-section-border);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0.5rem;
   background-color: var(--color-background);
   transition: all 0.3s ease;
   box-sizing: border-box;
@@ -389,6 +388,11 @@
   overflow-x: hidden;
 }
 
+#results-container.loading {
+  pointer-events: none;
+  overflow-y: hidden;
+}
+
 .centered-above {
   /* Center the element in container and place above everything */
   position: absolute;
@@ -412,7 +416,7 @@
 }
 
 .result-item.selected {
-  background-color: var(--color-result-selected-bg);
+  background-color: var(--color-item-bg-selected);
 }
 
 .result-name {
@@ -429,7 +433,7 @@
 
 .result-descriptor {
   font-size: 0.9rem;
-  color: var(--color-result-descriptor);
+  color: var(--color-item-descriptor);
   text-align: right;
   margin-left: 1rem;
   white-space: nowrap;
@@ -444,9 +448,6 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --backdrop-blur: 20px;
-
-    --color-result-selected-bg: rgba(255, 255, 255, 0.1);
-    --color-result-descriptor: rgba(246, 246, 246, 0.5);
   }
 }
 </style>

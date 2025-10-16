@@ -27,7 +27,7 @@
   />
   <button
     type="submit"
-    class="search-button"
+    class="primary-button"
     disabled={disabled}
   >
     {disabled ? 'Searching...' : 'Search'}
@@ -68,7 +68,7 @@
     cursor: not-allowed;
   }
 
-  .search-button {
+  .primary-button {
     padding: 0.3rem 1.2rem;
     font-family: inherit;
     font-size: 1em;
@@ -76,16 +76,5 @@
     background-color: var(--color-button-primary-bg);
     color: var(--color-button-primary);
     border-radius: 1rem;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  .search-button:hover:not(:disabled) {
-    background-color: var(--color-button-primary-bg-hover);
-  }
-
-  .search-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 </style>

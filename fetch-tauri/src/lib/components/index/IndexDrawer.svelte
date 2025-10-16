@@ -81,7 +81,7 @@
 </script>
 
 <div>
-  <div style="height: 2.5rem;"><!-- spacer (slightly smaller for gap additions) --></div>
+  <div style="height: 2rem;"><!-- spacer (slightly smaller for gap additions) --></div>
   <div class="index-drawer" bind:clientWidth={drawerWidth} class:open={isOpen}>
     <button class="drawer-bar" disabled={indexing} onclick={handleToggle}>
       {#if isOpen}
@@ -154,10 +154,10 @@
     display: flex;
     align-items: center;
     padding: 0 1.5rem;
-    transition: all 0.15s ease;
+    transition: all 0.1s ease;
   }
 
-  .drawer-bar:hover {
+  .drawer-bar:hover:not(:disabled) {
     background-color: var(--color-section-bg-hover);
   }
 
@@ -243,42 +243,11 @@
     gap: 1rem;
   }
   
-  /* TODO: move these button styles into common components css */
   .primary-button, .secondary-button {
     padding: 0.6rem 1.5rem;
     font-family: inherit;
     font-size: 1em;
     border: 0;
     border-radius: 2rem;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  .primary-button {
-    background-color: var(--color-button-primary-bg);
-    color: var(--color-button-primary);
-  }
-
-  .primary-button:hover {
-    background-color: var(--color-button-primary-bg-hover);
-  }
-
-  .primary-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .secondary-button {
-    background-color: var(--color-button-secondary-bg);
-    color: var(--color-text);
-  }
-
-  .secondary-button:hover {
-    background-color: var(--color-button-secondary-bg-hover);
-  }
-
-  .secondary-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 </style>

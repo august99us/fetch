@@ -14,6 +14,9 @@
       {
         "label": "quick",
         "url": "/",
+        "width": 800,
+        "height": 69,
+        "resizable": true,
         "decorations": false,
         "transparent": true
       }

@@ -173,13 +173,8 @@ impl QueryVectorKeys for LanceDBStore {
             .distance_type(DistanceType::Dot)
             .column(VECTOR_COLUMN)
             .select(Select::Columns(vec![String::from(KEY_COLUMN)]))
-            // It looks like currently vector query pagination works by cutting the first <offset> results from
-            // the returned <num_results> query. In other words, if I am looking for results 31-40, I should ask
-            // for limit 40 results with an offset of 30. I am masking this behavior from the QueryVectorKeys
-            // trait to follow what the API publishes as the expected behavior.
-            //
             // u32 -> usize casts, should always be fine
-            .limit((num_results + offset) as usize)
+            .limit(num_results as usize)
             .offset(offset as usize);
 
         let mut result_stream = query.execute().await

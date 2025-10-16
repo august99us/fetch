@@ -124,7 +124,6 @@
     background-color: var(--color-background);
     color: var(--color-text);
     cursor: pointer;
-    transition: background-color 0.15s ease;
   }
 
   .page-button:hover:not(:disabled) {
@@ -133,14 +132,12 @@
 
   .page-button:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: default;
   }
 
   .ellipsis {
     color: var(--color-text);
-  }
-
-  .ellipsis.disabled {
     opacity: 0.4;
+    cursor: default;
   }
 </style>

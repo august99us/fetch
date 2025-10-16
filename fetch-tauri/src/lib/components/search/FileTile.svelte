@@ -99,7 +99,6 @@
     border: 0;
     background-color: var(--color-item-bg-default);
     cursor: pointer;
-    transition: all 0.15s ease;
     font-family: inherit;
     color: var(--color-text);
     box-sizing: border-box;

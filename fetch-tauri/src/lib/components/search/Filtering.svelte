@@ -15,6 +15,7 @@
     padding: 0.3rem 0.75rem;
     border: 0;
     border-radius: 3px;
-    background-color: var(--color-select-bg);
+    color: var(--color-input-placeholder);
+    background-color: var(--color-input-bg);
   }
 </style>

@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { on } from 'svelte/events';
   import FileTile from './FileTile.svelte';
   const TILE_WIDTH = 20; // rem
   const TILE_HEIGHT = 15; // rem
