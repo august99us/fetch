@@ -3439,7 +3439,6 @@ dependencies = [
 name = "fetch-tauri"
 version = "0.0.2"
 dependencies = [
- "anyhow",
  "camino",
  "fetch-common",
  "fetch-core",

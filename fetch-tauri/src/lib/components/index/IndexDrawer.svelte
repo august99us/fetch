@@ -3,6 +3,7 @@
   import { cubicOut } from 'svelte/easing';
   import { open } from '@tauri-apps/plugin-dialog';
   import { invoke } from '@tauri-apps/api/core';
+  import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
   interface Props {
     isOpen?: boolean;
@@ -21,9 +22,61 @@
   let stagedPaths = $state<string[]>([]);
   let selectedPaths = $state<string[]>([]);
   let indexing = $state(false);
+  let progressCurrent = $state(0);
+  let progressTotal = $state(0);
+  let logs = $state<string[]>([]);
+  let logTextarea: HTMLTextAreaElement | undefined = $state();
 
-  function handleToggle() {
+  interface ProgressEvent {
+    current: number,
+    total: number,
+  }
+  interface LogEvent {
+    message: string,
+  }
+
+  let unlistenProgress: (() => void) | undefined;
+  let unlistenLog: (() => void) | undefined;
+  async function listenEvents() {
+    const appWebview = getCurrentWebviewWindow();
+    unlistenProgress = await appWebview.listen<ProgressEvent>('index_progress', (event) => {
+      progressCurrent = event.payload.current;
+      progressTotal = event.payload.total;
+    });
+    unlistenLog = await appWebview.listen<LogEvent>('index_log', (event) => {
+      logs.push(event.payload.message);
+      if (logTextarea) {
+        logTextarea.scrollTop = logTextarea.scrollHeight;
+      }
+    });
+  }
+
+  async function unlistenEvents() {
+    if (unlistenProgress) {
+      unlistenProgress();
+      unlistenProgress = undefined;
+    }
+    if (unlistenLog) {
+      unlistenLog();
+      unlistenLog = undefined;
+    }
+  }
+
+  async function handleToggle() {
     isOpen = !isOpen;
+    if (isOpen) {
+      // Opening
+      await listenEvents();
+    } else {
+      // Closing
+      stagedPaths = [];
+      selectedPaths = [];
+      indexing = false;
+      progressCurrent = 0;
+      progressTotal = 0;
+      logs = [];
+      await unlistenEvents();
+    }
     ontoggle?.(isOpen);
   }
 
@@ -35,11 +88,11 @@
       console.error("Error during indexing:", e);
     }
     onindex?.(stagedPaths);
-    stagedPaths = [];
-    selectedPaths = [];
-    handleToggle();
-    indexing = false;
     console.log("Finished indexing");
+    setTimeout(() => {
+      handleToggle();
+      indexing = false;
+    }, 2000);
   }
 
   async function handleSelectFiles() {
@@ -85,11 +138,11 @@
   <div class="index-drawer" bind:clientWidth={drawerWidth} class:open={isOpen}>
     <button class="drawer-bar" disabled={indexing} onclick={handleToggle}>
       {#if isOpen}
-        <span class="bar-text left" transition:fly={{ x: drawerWidth, opacity: -25, easing: cubicOut, duration: 300 }}>&lt; Back to File Search</span>
+        <span class="bar-text left" transition:fly={{ x: drawerWidth, opacity: -25, easing: cubicOut, duration: 220 }}>&lt; Back to File Search</span>
       {/if}
       <!-- Can't use else here because both elements need to exist at once for animation -->
       {#if !isOpen}
-        <span class="bar-text right underlined" transition:fly={{ x: -drawerWidth, opacity: -25, easing: cubicOut, duration: 300 }}>Index</span>
+        <span class="bar-text right underlined" transition:fly={{ x: -drawerWidth, opacity: -25, easing: cubicOut, duration: 220 }}>Index</span>
       {/if}
     </button>
 
@@ -123,6 +176,27 @@
           Index
         </button>
       </div>
+      
+      <div>&nbsp;</div>
+
+      <div class="progress-section">
+        <div class="progress-bar-container">
+          <div class="progress-bar">
+            <div
+              class="progress-bar-fill"
+              style="width: {progressTotal > 0 ? (progressCurrent / progressTotal * 100) : 0}%"
+            ></div>
+          </div>
+          <span class="progress-text">{progressCurrent}/{progressTotal}</span>
+        </div>
+
+        <textarea
+          bind:this={logTextarea}
+          class="log-display"
+          readonly
+          value={logs.join('\n')}
+        ></textarea>
+      </div>
     </div>
   </div>
 </div>
@@ -134,7 +208,7 @@
     left: 0;
     right: 0;
     height: 3rem;
-    transition: height 0.3s ease;
+    transition: height 0.2s ease;
     background-color: var(--color-background);
     z-index: 100;
   }
@@ -242,12 +316,64 @@
     justify-content: flex-end;
     gap: 1rem;
   }
-  
+
   .primary-button, .secondary-button {
     padding: 0.6rem 1.5rem;
     font-family: inherit;
     font-size: 1em;
     border: 0;
     border-radius: 2rem;
+  }
+
+  .progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .progress-bar-container {
+    display: flex;
+    align-items: center;
+  }
+
+  .progress-bar {
+    flex: 1;
+    height: 1.5rem;
+    background-color: var(--color-input-bg);
+    border: 1px solid var(--color-input-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background-color: var(--color-button-primary-bg);
+    transition: width 0.15s ease;
+  }
+
+  .progress-text {
+    margin-right: 1rem;
+    font-family: monospace;
+    font-size: 1em;
+    color: var(--color-text);
+    white-space: nowrap;
+    min-width: 4rem;
+    text-align: right;
+  }
+
+  .log-display {
+    width: 100%;
+    height: 15rem;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.9em;
+    border: 1px solid var(--color-input-border);
+    background-color: var(--color-input-bg);
+    color: var(--color-text);
+    border-radius: 0.5rem;
+    resize: none;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
 </style>

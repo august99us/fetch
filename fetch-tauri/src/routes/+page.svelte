@@ -18,7 +18,7 @@
     } else {
       await openFull();
     }
-    await setTimeout(() => {
+    setTimeout(() => {
       closeCurrent();
     }, 50);
   }

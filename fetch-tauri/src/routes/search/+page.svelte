@@ -24,7 +24,6 @@
   let loading = $state(false);
   let resultsPromise = $state<Promise<FileResult[]> | undefined>(undefined);
   let resultsArea: ResultsArea | undefined = $state();
-  let indexDrawerOpen = $state(false);
 
   // TODO: Implement query execution
   async function handleSearch(searchQuery: string, page: number = 1) {
@@ -142,9 +141,7 @@
     onchangepage={handleChangePage}
   />
 
-  <IndexDrawer
-    bind:isOpen={indexDrawerOpen}
-  />
+  <IndexDrawer />
 </main>
 
 <style>
