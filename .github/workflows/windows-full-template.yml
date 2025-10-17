@@ -35,20 +35,38 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Fetching latest ONNX Runtime version..."
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/onnxruntime/releases/latest"
-        $version = $release.tag_name
-        Write-Host "Latest version: $version"
+        try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/onnxruntime/releases/latest"
+            $version = $release.tag_name
+            Write-Host "Latest version: $version"
 
-        $url = "https://github.com/microsoft/onnxruntime/releases/download/$version/onnxruntime-win-${{ inputs.architecture }}-gpu-$version.zip"
-        $output = "onnxruntime.zip"
-        Write-Host "Downloading ONNX Runtime GPU from $url"
-        Invoke-WebRequest -Uri $url -OutFile $output
+            # Remove 'v' prefix if present
+            $version = $version -replace '^v', ''
+            Write-Host "Normalized version: $version"
 
-        Write-Host "Extracting ONNX Runtime..."
-        Expand-Archive -Path $output -DestinationPath "onnxruntime-extract"
-        $extractedDir = Get-ChildItem -Path "onnxruntime-extract" -Directory | Select-Object -First 1
-        Write-Host "Extracted to: $($extractedDir.FullName)"
-        echo "ONNX_BUILD_PATH=$($extractedDir.FullName)/lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $url = "https://github.com/microsoft/onnxruntime/releases/download/v$version/onnxruntime-win-${{ inputs.architecture }}-gpu-$version.zip"
+            $output = "onnxruntime.zip"
+            Write-Host "Downloading ONNX Runtime GPU from $url"
+            Invoke-WebRequest -Uri $url -OutFile $output
+
+            Write-Host "Extracting ONNX Runtime..."
+            Expand-Archive -Path $output -DestinationPath "onnxruntime-extract" -Force
+            $extractedDir = Get-ChildItem -Path "onnxruntime-extract" -Directory | Select-Object -First 1
+
+            if ($null -eq $extractedDir) {
+                throw "No directory found in extracted archive"
+            }
+
+            Write-Host "Extracted to: $($extractedDir.FullName)"
+            $libPath = Join-Path $extractedDir.FullName "lib"
+            Write-Host "ONNX_BUILD_PATH will be: $libPath"
+            echo "ONNX_BUILD_PATH=$libPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        }
+        catch {
+            Write-Host "Error: $_"
+            Write-Host $_.Exception.Message
+            exit 1
+        }
 
     - name: Install frontend dependencies
       working-directory: fetch-gui
