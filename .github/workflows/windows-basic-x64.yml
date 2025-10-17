@@ -1,0 +1,15 @@
+name: Windows GUI Basic (x64)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/windows-basic-template.yml
+    with:
+      architecture: x64
+      runner: windows-latest

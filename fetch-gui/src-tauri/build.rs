@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::fs::{self, File};
@@ -26,17 +27,11 @@ fn download_onnx_runtime() {
     };
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=ONNX_BUILD_PATH");
 
-    // Skip download if ONNX_BUILD_PATH is set (user is providing their own ONNX Runtime)
-    if env::var("ONNX_BUILD_PATH").is_ok() {
-        println!("cargo:warning=ONNX_BUILD_PATH is set, skipping ONNX Runtime download");
-        println!("cargo:warning=Using custom ONNX Runtime build from ONNX_BUILD_PATH");
-        return;
-    }
+    let bundle_dir = PathBuf::from("bundle/onnx-libs");
+    fs::create_dir_all(&bundle_dir).unwrap_or_else(|e| panic!("Could not create bundle/onnx-libs dir"));
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let bundle_dir = PathBuf::from("bundle/onnx-libs");
 
     // Check if ONNX Runtime libraries already exist
     let lib_exists = match target_os.as_str() {
@@ -44,13 +39,22 @@ fn download_onnx_runtime() {
         "macos" => bundle_dir.join("libonnxruntime.dylib").exists(),
         "linux" => bundle_dir.join("libonnxruntime.so").exists(),
         _ => {
-            println!("cargo:warning=Unsupported OS: {}. Skipping ONNX Runtime download.", target_os);
+            println!("cargo:warning=Unsupported OS: {}. Skipping ONNX Runtime prep.", target_os);
             return;
         }
     };
-
     if lib_exists {
         println!("cargo:warning=ONNX Runtime libraries already exist in bundle/onnx-libs/, skipping download");
+        return;
+    }
+
+    println!("cargo:rerun-if-env-changed=ONNX_BUILD_PATH");
+    // Skip download if ONNX_BUILD_PATH is set (user is providing their own ONNX Runtime)
+    if let Ok(onnx_build_path) = env::var("ONNX_BUILD_PATH") {
+        println!("cargo:warning=Using custom ONNX Runtime build from ONNX_BUILD_PATH");
+        if let Err(e) = copy_libs_to_path_recursive(Path::new(&onnx_build_path), &bundle_dir) {
+            panic!("Failed to copy dylibs from ONNX_BUILD_PATH: {}", e);
+        }
         return;
     }
 
@@ -120,9 +124,6 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
     println!("cargo:warning=Downloaded {} MB", bytes.len() / 1_000_000);
     println!("cargo:warning=Extracting libraries to bundle/onnx-libs/...");
 
-    // Extract libraries from the archive
-    fs::create_dir_all(output_dir)?;
-
     if filename.ends_with(".zip") {
         extract_from_zip(&temp_archive, output_dir)?;
     } else if filename.ends_with(".tgz") {
@@ -158,6 +159,42 @@ const LIB_PATTERNS: [&str; 4] = [
     "libonnxruntime_providers_cuda.so",
     "libonnxruntime_providers_tensorrt.so",
 ];
+fn copy_libs_to_path_recursive(source_path: &Path, output_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut queue = vec![source_path.to_path_buf()];
+    while let Some(path) = queue.pop() {
+        if seen.contains(&path) {
+            eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
+                directory structure somewhere? Folder: {:?}", path);
+                continue;
+        }
+        
+        if path.is_file() {
+            let filename = path.file_name().expect("File should have name")
+                .to_str().expect("Could not convert OsStr to str");
+            if LIB_PATTERNS.iter().any(|pattern| filename.ends_with(pattern)) {
+                let output_path = output_dir.join(filename);
+                fs::copy(&path, output_path)?;
+            }
+        } else if path.is_dir() {
+            for entry_result in path.read_dir()
+                .unwrap_or_else(|_| panic!("failed reading directory: {:?}", path)) {
+                match entry_result {
+                    Ok(entry) => {
+                        queue.push(entry.path());
+                    },
+                    Err(e) => panic!("Issue reading directory entry: {e:?}"),
+                }
+            }
+        } else {
+            println!("Warning: path is neither a file nor a directory, ignoring: {:?}", path);
+        }
+        seen.insert(path.clone());
+    }
+
+    Ok(())
+}
+
 fn extract_from_zip(zip_path: &Path, output_dir: &Path) -> Result<(), Box<dyn Error>> {
     use zip::ZipArchive;
     let file = File::open(zip_path)?;
