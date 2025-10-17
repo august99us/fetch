@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 
 use crate::vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys};
 
@@ -22,8 +22,8 @@ pub enum FileIndexerError {
 /// # Example
 /// 
 /// ```rust
-/// use fetch::file_index::{FileIndexer, index_files::IndexFiles, query_files::QueryFiles};
-/// use fetch::vector_store::lancedb_store::LanceDBStore;
+/// use fetch_core::file_index::{FileIndexer, index_files::IndexFiles, query_files::QueryFiles};
+/// use fetch_core::vector_store::lancedb_store::LanceDBStore;
 /// use camino::Utf8Path;
 /// 
 /// async fn example() -> Result<(), Box<dyn std::error::Error>> {
