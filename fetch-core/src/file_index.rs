@@ -36,8 +36,8 @@ pub enum FileIndexerError {
 ///     let result = indexer.index(path).await?;
 /// 
 ///     // Query for semantically similar files
-///     let results = indexer.query("a photo of a dog").await?;
-///     let specific_results = indexer.query_n("sunset landscape", 10).await?;
+///     let results = indexer.query("a photo of a dog", None).await?;
+///     let specific_results = indexer.query_n("sunset landscape", 10, 1).await?;
 ///     Ok(())
 /// }
 /// ```
