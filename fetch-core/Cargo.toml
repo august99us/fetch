@@ -4,7 +4,9 @@ version = "0.0.1"
 edition = "2021"
 
 [features]
-default = ["psd"]
+default = ["psd", "ort/load-dynamic"]
+cuda = ["ort/cuda"]
+qnn = ["ort/qnn"]
 
 [dependencies]
 # Workspace dependencies

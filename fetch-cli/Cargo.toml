@@ -20,13 +20,12 @@ name = "fetch-daemon"
 path = "src/bin/file_daemon.rs"
 
 [features]
-cuda = ["fetch-common/cuda"]
-qnn = ["fetch-common/qnn"]
+cuda = ["fetch-core/cuda"]
+qnn = ["fetch-core/qnn"]
 
 [dependencies]
 # Workspace dependencies
 fetch-core = { path = "../fetch-core" }
-fetch-common = { path = "../fetch-common" }
 
 anyhow = { workspace = true }
 camino = { workspace = true }

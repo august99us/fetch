@@ -3,8 +3,7 @@ use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, 
 use camino::Utf8PathBuf;
 use clap::Parser;
 use fetch_cli::utility::print_metrics;
-use fetch_common::bin::init_ort;
-use fetch_core::{app_config, embeddable::session_pool::init_indexing, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
+use fetch_core::{app_config, init_ort, init_indexing, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{runtime, sync::Semaphore, task};
@@ -35,8 +34,8 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    init_ort()?;
-    init_indexing();
+    init_ort(None)?;
+    init_indexing(None);
 
     let args = Args::parse();
     let start_time = std::time::Instant::now();

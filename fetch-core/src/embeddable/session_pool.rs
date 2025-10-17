@@ -1,10 +1,7 @@
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
+use camino::{Utf8Path, Utf8PathBuf};
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
-
-const IMAGE_MODEL_PATH: &str = "models/siglip2-b-16-512/image_embedder.onnx";
-const TEXT_MODEL_PATH: &str = "models/siglip2-b-16-512/text_embedder.onnx";
-const TOKENIZER_PATH: &str = "models/siglip2-b-16-512/tokenizer.json";
 
 pub static IMAGE_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {
     create_session_pool(1, PoolType::Image)
@@ -15,33 +12,18 @@ pub static TEXT_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {
 });
 
 pub static TEXT_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
-    let exe_loc = std::env::current_exe()
-        .expect("Failed to get current executable path")
-        .parent()
-        .expect("Failed to get parent directory of executable")
-        .to_owned();
-
-    Tokenizer::from_file(exe_loc.join(TOKENIZER_PATH)).expect("Error loading tokenizer from file")
+    let base_dir = get_base_resource_dir();
+    Tokenizer::from_file(base_dir.join(TOKENIZER_PATH)).expect("Error loading tokenizer from file")
 });
-
-/// Init function that retrieves indexing resources and then immediately drops them to initialize lazy cells
-pub fn init_indexing() {
-    IMAGE_SESSION_POOL.get_session();
-}
-
-/// Init function that retrieves querying resources and then immediately drops them to initialize lazy cells
-pub fn init_querying() {
-    TEXT_SESSION_POOL.get_session();
-}
 
 pub type SessionPool = Arc<Vec<Mutex<Session>>>;
 
 pub trait SessionPoolExt {
-    fn get_session(&self) -> MutexGuard<Session>;
+    fn get_session(&'_ self) -> MutexGuard<'_, Session>;
 }
 
 impl SessionPoolExt for SessionPool {
-    fn get_session(&self) -> MutexGuard<Session> {
+    fn get_session(&'_ self) -> MutexGuard<'_, Session> {
         for session_mutex in self.iter() {
             if let Ok(session) = session_mutex.try_lock() {
                 return session;
@@ -68,19 +50,40 @@ pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
                     .with_intra_threads(4)
                     .expect("Failed to set intra threads");
 
-                let exe_loc = std::env::current_exe()
-                    .expect("Failed to get current executable path")
-                    .parent()
-                    .expect("Failed to get parent directory of executable")
-                    .to_owned();
+                let base_dir = get_base_resource_dir();
 
                 let session_result = match pool_type {
-                    PoolType::Image => session_builder.commit_from_file(exe_loc.join(IMAGE_MODEL_PATH)),
-                    PoolType::Text => session_builder.commit_from_file(exe_loc.join(TEXT_MODEL_PATH)),
+                    PoolType::Image => session_builder.commit_from_file(base_dir.join(IMAGE_MODEL_PATH)),
+                    PoolType::Text => session_builder.commit_from_file(base_dir.join(TEXT_MODEL_PATH)),
                 };
 
                 Mutex::new(session_result.expect("Failed to commit model from memory"))
             })
             .collect()
     )
+}
+
+// Private functions and variables
+
+const IMAGE_MODEL_PATH: &str = "siglip2-b-16-512/image_embedder.onnx";
+const TEXT_MODEL_PATH: &str = "siglip2-b-16-512/text_embedder.onnx";
+const TOKENIZER_PATH: &str = "siglip2-b-16-512/tokenizer.json";
+
+/// Static variable for the base resource (model + tokenizer files) directory
+/// Defaults to "models" if not explicitly set
+static BASE_RESOURCE_DIRECTORY: OnceLock<Utf8PathBuf> = OnceLock::new();
+
+/// Set the base resource directory. If the base resource directory has already been
+/// set or a model has already been loaded, this will be ignored.
+pub fn init_model_resource_directory(path: &Utf8Path) {
+    BASE_RESOURCE_DIRECTORY.set(path.to_path_buf()).unwrap_or_else(|_| {
+        eprintln!("Attempting to change previously resolved base model resource directory, ignoring");
+    });
+}
+
+/// Get the base resource directory, defaulting to "models"
+fn get_base_resource_dir() -> Utf8PathBuf {
+    BASE_RESOURCE_DIRECTORY
+        .get_or_init(|| Utf8PathBuf::from("models"))
+        .clone()
 }

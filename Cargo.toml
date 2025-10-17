@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "fetch-cli",
-    "fetch-common",
     "fetch-core",
     "fetch-gui/src-tauri",
 ]
