@@ -1,0 +1,28 @@
+@import '../colors.css';
+
+.primary-button, .secondary-button {
+  cursor: pointer;
+}
+
+.primary-button {
+  background-color: var(--color-button-primary-bg);
+  color: var(--color-button-primary);
+}
+
+.primary-button:hover:not(:disabled) {
+  background-color: var(--color-button-primary-bg-hover);
+}
+
+.secondary-button {
+  background-color: var(--color-button-secondary-bg);
+  color: var(--color-text);
+}
+
+.secondary-button:hover:not(:disabled) {
+  background-color: var(--color-button-secondary-bg-hover);
+}
+
+.primary-button:disabled, .secondary-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

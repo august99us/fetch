@@ -1,10 +1,9 @@
 [workspace]
 members = [
-    "fetch-cli", 
+    "fetch-cli",
     "fetch-common",
     "fetch-core",
-    "fetch-gui",
-    "fetch-tauri/src-tauri",
+    "fetch-gui/src-tauri",
 ]
 resolver = "2"
 

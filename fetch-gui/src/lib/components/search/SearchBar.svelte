@@ -1,0 +1,80 @@
+<script lang="ts">
+  interface Props {
+    query?: string;
+    disabled?: boolean;
+    onsearch?: (query: string) => void;
+  }
+
+  let {
+    query = $bindable(''),
+    disabled = false,
+    onsearch
+  }: Props = $props();
+
+  function handleSubmit(event: Event) {
+    event.preventDefault();
+    onsearch?.(query);
+  }
+</script>
+
+<form class="search-bar" onsubmit={handleSubmit}>
+  <input
+    type="text"
+    class="search-input"
+    placeholder="Enter search query..."
+    bind:value={query}
+    disabled={disabled}
+  />
+  <button
+    type="submit"
+    class="primary-button"
+    disabled={disabled}
+  >
+    {disabled ? 'Searching...' : 'Search'}
+  </button>
+</form>
+
+<style>
+  .search-bar {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .search-input {
+    flex: 1;
+    padding: 0.3rem 1.2rem;
+    font-family: inherit;
+    font-size: 1em;
+    border: 1px solid var(--color-input-border);
+    background-color: var(--color-input-bg);
+    color: var(--color-text);
+    border-radius: 1rem;
+    outline: none;
+    transition: all 0.15s ease;
+  }
+
+  .search-input:focus {
+    border-color: var(--color-input-border-focus);
+    background-color: var(--color-input-bg-focus);
+  }
+
+  .search-input::placeholder {
+    color: var(--color-input-placeholder);
+  }
+
+  .search-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .primary-button {
+    padding: 0.3rem 1.2rem;
+    font-family: inherit;
+    font-size: 1em;
+    border: 0;
+    background-color: var(--color-button-primary-bg);
+    color: var(--color-button-primary);
+    border-radius: 1rem;
+  }
+</style>

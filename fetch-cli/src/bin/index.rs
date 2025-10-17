@@ -35,12 +35,6 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    #[cfg(feature = "tracing")]
-    {
-        //console_subscriber::init();
-        tracing_subscriber::fmt::init();
-    }
-
     init_ort()?;
     init_indexing();
 

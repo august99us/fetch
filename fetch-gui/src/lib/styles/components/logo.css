@@ -1,0 +1,32 @@
+@import '../colors.css';
+
+:root {
+  --logo-opacity: 0.9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --logo-opacity: 0.8;
+  }
+}
+
+.logo {
+  height: 4em;
+  will-change: filter;
+  transition: filter 0.3s ease;
+  opacity: var(--logo-opacity);
+}
+
+.logo-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-button:hover {
+  filter: drop-shadow(0 0 1em var(--color-accent-glow));
+  opacity: 1;
+}
