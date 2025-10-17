@@ -45,7 +45,7 @@
     ],
     "resources": [
       "../../fetch-core/bundle/models/",
-      "bundle/onnx-libs/*"
+      "bundle/onnx-libs/"
     ]
   }
 }
