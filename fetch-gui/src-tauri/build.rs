@@ -28,8 +28,8 @@ fn download_onnx_runtime() {
 
     println!("cargo:rerun-if-changed=build.rs");
 
-    let bundle_dir = PathBuf::from("bundle/onnx-libs");
-    fs::create_dir_all(&bundle_dir).unwrap_or_else(|_| panic!("Could not create bundle/onnx-libs dir"));
+    let bundle_dir = PathBuf::from("bundle");
+    fs::create_dir_all(&bundle_dir).unwrap_or_else(|_| panic!("Could not create bundle dir"));
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
@@ -44,7 +44,7 @@ fn download_onnx_runtime() {
         }
     };
     if lib_exists {
-        println!("cargo:warning=ONNX Runtime libraries already exist in bundle/onnx-libs/, skipping download");
+        println!("cargo:warning=ONNX Runtime libraries already exist in bundle/, skipping download");
         return;
     }
 
@@ -122,7 +122,7 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
     drop(file);
 
     println!("cargo:warning=Downloaded {} MB", bytes.len() / 1_000_000);
-    println!("cargo:warning=Extracting libraries to bundle/onnx-libs/...");
+    println!("cargo:warning=Extracting libraries to bundle/...");
 
     if filename.ends_with(".zip") {
         extract_from_zip(&temp_archive, output_dir)?;
