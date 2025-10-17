@@ -29,7 +29,7 @@ fn download_onnx_runtime() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let bundle_dir = PathBuf::from("bundle/onnx-libs");
-    fs::create_dir_all(&bundle_dir).unwrap_or_else(|e| panic!("Could not create bundle/onnx-libs dir"));
+    fs::create_dir_all(&bundle_dir).unwrap_or_else(|_| panic!("Could not create bundle/onnx-libs dir"));
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 

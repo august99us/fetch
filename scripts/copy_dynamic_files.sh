@@ -78,7 +78,7 @@ copy_or_link() {
 }
 
 # Copy models from fetch-core/artifacts
-MODELS_SRC="$WORKSPACE_ROOT/fetch-core/artifacts/models"
+MODELS_SRC="$WORKSPACE_ROOT/fetch-core/bundle/models"
 if [ -d "$MODELS_SRC" ]; then
     copy_or_link "$MODELS_SRC" "$TARGET_DIR"
 else

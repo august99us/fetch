@@ -12,3 +12,11 @@ anyhow = { version = "1.0.98", features = ["backtrace"] }
 camino = "1.1.9"
 futures = "0.3.31"
 tokio = { version = "1.47.0", features = ["signal", "sync", "rt-multi-thread", "macros"] }
+
+[profile.release]
+# Optimize for size since compute-heavy work happens in ONNX Runtime
+opt-level = "z"          # Optimize for size
+lto = true               # Enable Link Time Optimization (removes dead code across crates)
+codegen-units = 1        # Better optimization (slower compile, but smaller binary)
+strip = true             # Strip debug symbols from binary
+panic = "abort"          # Smaller panic handler (no unwinding)

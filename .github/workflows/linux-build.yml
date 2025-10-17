@@ -1,10 +1,11 @@
-name: Linux
+name: Linux Build
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,7 +36,21 @@ jobs:
           libayatana-appindicator3-dev \
           librsvg2-dev \
           patchelf
-    - name: Build
-      run: cargo build --release --verbose
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Build workspace
+      run: cargo build --verbose
+
+    - name: Install frontend dependencies
+      working-directory: fetch-gui
+      run: npm install
+
+    - name: Build Tauri GUI (no bundling or debug)
+      working-directory: fetch-gui
+      run: npm run tauri build -- --no-bundle --debug
+
     - name: Run tests
-      run: cargo test --release --verbose
+      run: cargo test --verbose

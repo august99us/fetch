@@ -90,7 +90,7 @@ function Copy-OrLink {
 }
 
 # Copy models from fetch-core/artifacts
-$ModelsSource = Join-Path $WorkspaceRoot "fetch-core\artifacts\models"
+$ModelsSource = Join-Path $WorkspaceRoot "fetch-core\bundle\models"
 if (Test-Path $ModelsSource) {
     Copy-OrLink -Source $ModelsSource -Destination $TargetDir
 } else {

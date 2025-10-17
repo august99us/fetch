@@ -81,5 +81,5 @@ jobs:
       with:
         name: fetch-gui-windows-full-${{ inputs.architecture }}
         path: |
-          fetch-gui/src-tauri/target/release/bundle/
+          target/release/bundle/
         retention-days: 7
