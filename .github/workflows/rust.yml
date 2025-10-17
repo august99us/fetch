@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 jobs:
   build:
@@ -16,6 +17,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
     - name: Install Protoc
       uses: arduino/setup-protoc@v3
     - name: Install system dependencies
@@ -28,6 +36,6 @@ jobs:
           librsvg2-dev \
           patchelf
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --release --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --release --verbose
