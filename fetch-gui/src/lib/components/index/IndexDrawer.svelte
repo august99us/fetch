@@ -134,7 +134,8 @@
 </script>
 
 <div>
-  <div style="height: 2rem;"><!-- spacer (slightly smaller for gap additions) --></div>
+  <!-- spacer (slightly smaller for gap additions) -->
+  <div style="height: 2rem;">&nbsp;</div>
   <div class="index-drawer" bind:clientWidth={drawerWidth} class:open={isOpen}>
     <button class="drawer-bar" disabled={indexing} onclick={handleToggle}>
       {#if isOpen}
