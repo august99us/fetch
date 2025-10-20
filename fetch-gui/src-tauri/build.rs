@@ -5,14 +5,17 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use reqwest::blocking::Client;
 use serde::Deserialize;
+use tauri_build::Attributes;
 
 fn main() {
     // Download ONNX Runtime BEFORE calling tauri_build
     download_onnx_runtime();
 
+    println!("cargo:warning=All tauri stuff now");
     // Now build Tauri app
-    tauri_build::build();
+    tauri_build::try_build(Attributes::new()).unwrap_or_else(|e| panic!("tauri error: {:?}", e.backtrace()));
 }
 
 fn download_onnx_runtime() {
@@ -72,15 +75,25 @@ struct OnnxInfoJson {
 }
 
 fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let client = reqwest_client()?;
+
     println!("cargo:rerun-if-env-changed=ONNX_RELEASE_VERSION_DOWNLOAD");
     let onnx_version = match env::var("ONNX_RELEASE_VERSION_DOWNLOAD") {
         Ok(ver) => ver,
         Err(_) => {
-            let response = reqwest::blocking::get("https://api.github.com/repos/microsoft/onnxruntime/releases/latest")?;
+            let response = client
+                .get("https://api.github.com/repos/microsoft/onnxruntime/releases/latest")
+                .send()?;
             if !response.status().is_success() {
-                return Err(format!("Failed to contact github for onnx release info: HTTP {}", response.status()).into());
+                return Err(format!("Failed to contact github for onnx release info: HTTP {}, Response: {}", response.status(), 
+                    response.text().unwrap_or_default()).into());
             }
-            response.json::<OnnxInfoJson>().unwrap().tag_name
+            let tag = response.json::<OnnxInfoJson>().unwrap().tag_name;
+            if tag.chars().next().expect("tag is empty") == 'v' {
+                tag[1..].to_owned()
+            } else {
+                tag
+            }
         }
     };
 
@@ -108,10 +121,11 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
     println!("cargo:warning=Downloading from: {}", url);
 
     // Download the file
-    let response = reqwest::blocking::get(&url)?;
+    let response = client.get(&url).send()?;
     if !response.status().is_success() {
         return Err(format!("Failed to download: HTTP {}", response.status()).into());
     }
+    println!("cargo:warning=Downloaded");
 
     let bytes = response.bytes()?;
 
@@ -217,6 +231,7 @@ fn extract_from_zip(zip_path: &Path, output_dir: &Path) -> Result<(), Box<dyn Er
 
             let mut outfile = File::create(&output_path)?;
             io::copy(&mut file, &mut outfile)?;
+            drop(outfile);
         }
     }
 
@@ -252,4 +267,10 @@ fn extract_from_tar_gz(tar_gz_path: &Path, output_dir: &Path) -> Result<(), Box<
     }
 
     Ok(())
+}
+
+fn reqwest_client() -> Result<Client, Box<dyn Error>> {
+    Ok(Client::builder()
+        .user_agent(format!("sparrow/fetch-gui/build-agent/{}", env!("CARGO_PKG_VERSION")))
+        .build()?)
 }
