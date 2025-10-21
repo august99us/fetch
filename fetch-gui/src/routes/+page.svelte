@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { fade } from "svelte/transition";
   import { onMount } from "svelte";
-  import { getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window";
+  import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   let query = $state("");
@@ -205,7 +205,7 @@
       const bodyHeight = mainContainer.offsetHeight;
       console.log(`Resizing window to content: ${bodyWidth}x${bodyHeight}`);
 
-      await appWindow.setSize(new PhysicalSize(bodyWidth, bodyHeight));
+      await appWindow.setSize(new LogicalSize(bodyWidth, bodyHeight));
       ignoreFirstAfterResize = true;
       await appWindow.center();
     } catch (error) {
