@@ -14,7 +14,8 @@ fn main() {
     download_onnx_runtime();
 
     // Now build Tauri app
-    tauri_build::try_build(Attributes::new()).unwrap_or_else(|e| panic!("tauri error: {:?}", e.backtrace()));
+    tauri_build::try_build(Attributes::new())
+        .unwrap_or_else(|e| panic!("tauri error: {:?}", e.backtrace()));
 }
 
 fn download_onnx_runtime() {
@@ -41,12 +42,17 @@ fn download_onnx_runtime() {
         "macos" => bundle_dir.join("libonnxruntime.dylib").exists(),
         "linux" => bundle_dir.join("libonnxruntime.so").exists(),
         _ => {
-            println!("cargo:warning=Unsupported OS: {}. Skipping ONNX Runtime prep.", target_os);
+            println!(
+                "cargo:warning=Unsupported OS: {}. Skipping ONNX Runtime prep.",
+                target_os
+            );
             return;
         }
     };
     if lib_exists {
-        println!("cargo:warning=ONNX Runtime libraries already exist in bundle/, skipping download");
+        println!(
+            "cargo:warning=ONNX Runtime libraries already exist in bundle/, skipping download"
+        );
         return;
     }
 
@@ -65,7 +71,10 @@ fn download_onnx_runtime() {
         panic!("Failed to download ONNX Runtime: {}", e);
     }
 
-    println!("cargo:warning=ONNX Runtime {} libraries downloaded successfully", variant);
+    println!(
+        "cargo:warning=ONNX Runtime {} libraries downloaded successfully",
+        variant
+    );
 }
 
 #[derive(Deserialize)]
@@ -73,7 +82,11 @@ struct OnnxInfoJson {
     tag_name: String,
 }
 
-fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) -> Result<(), Box<dyn Error>> {
+fn download_and_extract_onnx(
+    variant: &str,
+    target_os: &str,
+    output_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
     let client = reqwest_client()?;
 
     println!("cargo:rerun-if-env-changed=ONNX_RELEASE_VERSION_DOWNLOAD");
@@ -84,8 +97,12 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
                 .get("https://api.github.com/repos/microsoft/onnxruntime/releases/latest")
                 .send()?;
             if !response.status().is_success() {
-                return Err(format!("Failed to contact github for onnx release info: HTTP {}, Response: {}", response.status(), 
-                    response.text().unwrap_or_default()).into());
+                return Err(format!(
+                    "Failed to contact github for onnx release info: HTTP {}, Response: {}",
+                    response.status(),
+                    response.text().unwrap_or_default()
+                )
+                .into());
             }
             let tag = response.json::<OnnxInfoJson>().unwrap().tag_name;
             if tag.chars().next().expect("tag is empty") == 'v' {
@@ -104,7 +121,7 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
             // macOS doesn't have official GPU builds, fall back to CPU
             println!("cargo:warning=macOS GPU build not available, using CPU variant");
             format!("onnxruntime-osx-universal2-{}.tgz", onnx_version)
-        },
+        }
         ("macos", _) => format!("onnxruntime-osx-universal2-{}.tgz", onnx_version),
         ("linux", "gpu") => format!("onnxruntime-linux-x64-gpu-{}.tgz", onnx_version),
         ("linux", _) => format!("onnxruntime-linux-x64-{}.tgz", onnx_version),
@@ -116,7 +133,10 @@ fn download_and_extract_onnx(variant: &str, target_os: &str, output_dir: &Path) 
         onnx_version, filename
     );
 
-    println!("cargo:warning=Downloading ONNX Runtime {} variant version {} for {}...", variant, onnx_version, target_os);
+    println!(
+        "cargo:warning=Downloading ONNX Runtime {} variant version {} for {}...",
+        variant, onnx_version, target_os
+    );
     println!("cargo:warning=Downloading from: {}", url);
 
     // Download the file
@@ -172,35 +192,49 @@ const LIB_PATTERNS: [&str; 4] = [
     "libonnxruntime_providers_cuda.so",
     "libonnxruntime_providers_tensorrt.so",
 ];
-fn copy_libs_to_path_recursive(source_path: &Path, output_dir: &Path) -> Result<(), Box<dyn Error>> {
+fn copy_libs_to_path_recursive(
+    source_path: &Path,
+    output_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut queue = vec![source_path.to_path_buf()];
     while let Some(path) = queue.pop() {
         if seen.contains(&path) {
             eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
                 directory structure somewhere? Folder: {:?}", path);
-                continue;
+            continue;
         }
-        
+
         if path.is_file() {
-            let filename = path.file_name().expect("File should have name")
-                .to_str().expect("Could not convert OsStr to str");
-            if LIB_PATTERNS.iter().any(|pattern| filename.ends_with(pattern)) {
+            let filename = path
+                .file_name()
+                .expect("File should have name")
+                .to_str()
+                .expect("Could not convert OsStr to str");
+            if LIB_PATTERNS
+                .iter()
+                .any(|pattern| filename.ends_with(pattern))
+            {
                 let output_path = output_dir.join(filename);
                 fs::copy(&path, output_path)?;
             }
         } else if path.is_dir() {
-            for entry_result in path.read_dir()
-                .unwrap_or_else(|_| panic!("failed reading directory: {:?}", path)) {
+            for entry_result in path
+                .read_dir()
+                .unwrap_or_else(|_| panic!("failed reading directory: {:?}", path))
+            {
                 match entry_result {
                     Ok(entry) => {
                         queue.push(entry.path());
-                    },
+                    }
                     Err(e) => panic!("Issue reading directory entry: {e:?}"),
                 }
             }
         } else {
-            println!("Warning: path is neither a file nor a directory, ignoring: {:?}", path);
+            println!(
+                "Warning: path is neither a file nor a directory, ignoring: {:?}",
+                path
+            );
         }
         seen.insert(path.clone());
     }
@@ -218,15 +252,18 @@ fn extract_from_zip(zip_path: &Path, output_dir: &Path) -> Result<(), Box<dyn Er
         let file_name = file.name();
 
         // Check if this is a library we want
-        let should_extract = LIB_PATTERNS.iter().any(|pattern| {
-            file_name.ends_with(pattern)
-        });
+        let should_extract = LIB_PATTERNS
+            .iter()
+            .any(|pattern| file_name.ends_with(pattern));
 
         if should_extract {
             let file_name_only = Path::new(file_name).file_name().unwrap();
             let output_path = output_dir.join(file_name_only);
 
-            println!("cargo:warning=Extracting: {}", file_name_only.to_string_lossy());
+            println!(
+                "cargo:warning=Extracting: {}",
+                file_name_only.to_string_lossy()
+            );
 
             let mut outfile = File::create(&output_path)?;
             io::copy(&mut file, &mut outfile)?;
@@ -251,9 +288,9 @@ fn extract_from_tar_gz(tar_gz_path: &Path, output_dir: &Path) -> Result<(), Box<
         let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
         // Check if this is a library we want
-        let should_extract = LIB_PATTERNS.iter().any(|pattern| {
-            file_name == *pattern || file_name.starts_with(pattern)
-        });
+        let should_extract = LIB_PATTERNS
+            .iter()
+            .any(|pattern| file_name == *pattern || file_name.starts_with(pattern));
 
         if should_extract {
             let output_path = output_dir.join(file_name);
@@ -269,6 +306,9 @@ fn extract_from_tar_gz(tar_gz_path: &Path, output_dir: &Path) -> Result<(), Box<
 
 fn reqwest_client() -> Result<Client, Box<dyn Error>> {
     Ok(Client::builder()
-        .user_agent(format!("sparrow/fetch-gui/build-agent/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!(
+            "sparrow/fetch-gui/build-agent/{}",
+            env!("CARGO_PKG_VERSION")
+        ))
         .build()?)
 }

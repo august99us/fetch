@@ -168,13 +168,24 @@
     }
   }
 
+  let ignoreFirstAfterResize = true;
   let lastMousePositionResult = { x: 0, y: 0 };
   function handleResultMouseOver(event: MouseEvent, index: number) {
+    if (ignoreFirstAfterResize) {
+      ignoreFirstAfterResize = false;
+      return;
+    }
     // Only update selection if the mouse actually moved
     if (event.clientX !== lastMousePositionResult.x || event.clientY !== lastMousePositionResult.y) {
       lastMousePositionResult = { x: event.clientX, y: event.clientY };
       selectedIndex = index;
     }
+  }
+
+  function handleWindowMouseMove(event: MouseEvent) {
+    // Update the mouse position used to determine whether the mouse actually moved or not
+    // for result focusing
+    lastMousePositionResult = { x: event.clientX, y: event.clientY };
   }
 
   function handleResultFocus(index: number) {
@@ -195,6 +206,7 @@
       console.log(`Resizing window to content: ${bodyWidth}x${bodyHeight}`);
 
       await appWindow.setSize(new PhysicalSize(bodyWidth, bodyHeight));
+      ignoreFirstAfterResize = true;
       await appWindow.center();
     } catch (error) {
       console.error("Error resizing and centering window:", error);
@@ -243,6 +255,8 @@
     }
   });
 </script>
+
+<svelte:window onmousemove={handleWindowMouseMove} />
 
 <main class="container" bind:this={mainContainer}>
   <div id="search-container" data-tauri-drag-region>

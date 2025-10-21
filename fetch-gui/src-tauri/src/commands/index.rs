@@ -28,31 +28,59 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     let unique_files = explore_paths(utf8_paths);
 
     let num_files = unique_files.len();
-    app.emit_to("full", PROGRESS_EVENT_IDENTIFIER, Progress {
-        current: 0.0,
-        total: num_files as f32,
-        }).unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit progress event: {}", e.to_string()));
+    app.emit_to(
+        "full",
+        PROGRESS_EVENT_IDENTIFIER,
+        Progress {
+            current: 0.0,
+            total: num_files as f32,
+        },
+    )
+    .unwrap_or_else(|e: tauri::Error| {
+        eprintln!("Could not emit progress event: {}", e.to_string())
+    });
 
     for (i, path) in unique_files.iter().map(Utf8PathBuf::as_path).enumerate() {
-        app.emit_to("full", LOG_EVENT_IDENTIFIER, Log {
-            message: format!("Indexing file: {}", path),
-        }).unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
+        app.emit_to(
+            "full",
+            LOG_EVENT_IDENTIFIER,
+            Log {
+                message: format!("Indexing file: {}", path),
+            },
+        )
+        .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
 
-        file_indexer
-            .index(path)
-            .await
-            .map_err(|e| format!("Error while indexing files: {}, source: {}", e,
-                e.source().map(<dyn Error>::to_string).unwrap_or("".to_string())))?;
-                
-        app.emit_to("full", PROGRESS_EVENT_IDENTIFIER, Progress {
-            current: i as f32 + 1.0,
-            total: num_files as f32,
-        }).unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit progress event: {}", e.to_string()));
+        file_indexer.index(path).await.map_err(|e| {
+            format!(
+                "Error while indexing files: {}, source: {}",
+                e,
+                e.source()
+                    .map(<dyn Error>::to_string)
+                    .unwrap_or("".to_string())
+            )
+        })?;
+
+        app.emit_to(
+            "full",
+            PROGRESS_EVENT_IDENTIFIER,
+            Progress {
+                current: i as f32 + 1.0,
+                total: num_files as f32,
+            },
+        )
+        .unwrap_or_else(|e: tauri::Error| {
+            eprintln!("Could not emit progress event: {}", e.to_string())
+        });
     }
 
-    app.emit_to("full", LOG_EVENT_IDENTIFIER, Log {
-        message: format!("All done! Goodbye."),
-    }).unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
+    app.emit_to(
+        "full",
+        LOG_EVENT_IDENTIFIER,
+        Log {
+            message: format!("All done! Goodbye."),
+        },
+    )
+    .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
 
     Ok(())
 }
@@ -69,14 +97,16 @@ fn explore_paths(paths: Vec<Utf8PathBuf>) -> Vec<Utf8PathBuf> {
         if seen.contains(&path) {
             eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
                 directory structure somewhere? Folder: {}", path.to_string());
-                continue;
+            continue;
         }
-        
+
         if path.is_file() {
             files.insert(path.clone());
         } else if path.is_dir() {
-            for entry_result in path.read_dir()
-                .unwrap_or_else(|_| panic!("failed reading directory: {}", path.to_string())) {
+            for entry_result in path
+                .read_dir()
+                .unwrap_or_else(|_| panic!("failed reading directory: {}", path.to_string()))
+            {
                 match entry_result {
                     Ok(entry) => {
                         let convert_result = Utf8PathBuf::try_from(entry.path());
@@ -85,17 +115,20 @@ fn explore_paths(paths: Vec<Utf8PathBuf>) -> Vec<Utf8PathBuf> {
                                 eprintln!("Warning: could not convert pathbuf to utf8pathbuf, ignoring path: {}, error: {e:?}",
                                     entry.path().to_string_lossy());
                                 continue;
-                            },
+                            }
                             Ok(entry_path) => {
                                 queue.push(entry_path);
-                            },
+                            }
                         }
-                    },
+                    }
                     Err(e) => panic!("Issue reading directory entry: {e:?}"),
                 }
             }
         } else {
-            println!("Warning: path is neither a file nor a directory, ignoring: {}", path.to_string());
+            println!(
+                "Warning: path is neither a file nor a directory, ignoring: {}",
+                path.to_string()
+            );
         }
         seen.insert(path);
     }
