@@ -22,6 +22,7 @@
     type="text"
     class="search-input"
     placeholder="Enter search query..."
+    autocomplete="off"
     bind:value={query}
     disabled={disabled}
   />

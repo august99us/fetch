@@ -260,8 +260,7 @@ fn extract_from_tar_gz(tar_gz_path: &Path, output_dir: &Path) -> Result<(), Box<
 
             println!("cargo:warning=Extracting: {}", file_name);
 
-            let mut outfile = File::create(&output_path)?;
-            io::copy(&mut entry, &mut outfile)?;
+            entry.unpack(output_path)?;
         }
     }
 
