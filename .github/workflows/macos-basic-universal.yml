@@ -1,0 +1,65 @@
+name: macOS GUI Basic
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build-gui-basic:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: true
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+
+    - name: Download ONNX Runtime (CPU - Universal)
+      run: |
+        echo "Fetching latest ONNX Runtime version..."
+        VERSION=$(curl -s https://api.github.com/repos/microsoft/onnxruntime/releases/latest | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+        echo "Latest version: $VERSION"
+
+        URL="https://github.com/microsoft/onnxruntime/releases/download/v${VERSION}/onnxruntime-osx-universal2-${VERSION}.tgz"
+        echo "Downloading ONNX Runtime from $URL"
+        curl -L -o onnxruntime.tgz "$URL"
+
+        echo "Extracting ONNX Runtime..."
+        tar -xzf onnxruntime.tgz
+        EXTRACTED_DIR=$(ls -d onnxruntime-osx-* | head -1)
+
+        if [ -z "$EXTRACTED_DIR" ]; then
+          echo "Error: No directory found in extracted archive"
+          exit 1
+        fi
+
+        echo "Extracted to: $EXTRACTED_DIR"
+        LIB_PATH="$PWD/$EXTRACTED_DIR/lib"
+        echo "ONNX_BUILD_PATH will be: $LIB_PATH"
+        echo "ONNX_BUILD_PATH=$LIB_PATH" >> $GITHUB_ENV
+
+    - name: Install frontend dependencies
+      working-directory: fetch-gui
+      run: npm install
+
+    - name: Build Tauri application (Basic - Universal)
+      working-directory: fetch-gui
+      run: npm run tauri build -- --target universal-apple-darwin
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: fetch-gui-macos-basic-universal
+        path: |
+          target/universal-apple-darwin/release/bundle/
+        retention-days: 7
