@@ -50,9 +50,7 @@ fn download_onnx_runtime() {
         }
     };
     if lib_exists {
-        println!(
-            "cargo:warning=ONNX Runtime libraries already exist in bundle/, skipping download"
-        );
+        println!("cargo:warning=ONNX Runtime libraries already exist in bundle/, skipping download");
         return;
     }
 
@@ -144,7 +142,6 @@ fn download_and_extract_onnx(
     if !response.status().is_success() {
         return Err(format!("Failed to download: HTTP {}", response.status()).into());
     }
-    println!("cargo:warning=Downloaded");
 
     let bytes = response.bytes()?;
 

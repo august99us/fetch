@@ -65,9 +65,9 @@ pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
 
 // Private functions and variables
 
-const IMAGE_MODEL_PATH: &str = "siglip2-b-16-512/image_embedder.onnx";
-const TEXT_MODEL_PATH: &str = "siglip2-b-16-512/text_embedder.onnx";
-const TOKENIZER_PATH: &str = "siglip2-b-16-512/tokenizer.json";
+const IMAGE_MODEL_PATH: &str = "siglip2-base-patch16-512/image_embedder.onnx";
+const TEXT_MODEL_PATH: &str = "siglip2-base-patch16-512/text_embedder.onnx";
+const TOKENIZER_PATH: &str = "siglip2-base-patch16-512/tokenizer.json";
 
 /// Static variable for the base resource (model + tokenizer files) directory
 /// Defaults to "models" if not explicitly set

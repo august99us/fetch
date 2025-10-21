@@ -1,4 +1,4 @@
-name: macOS GUI Basic
+name: macOS GUI Basic (Universal)
 
 on:
   workflow_dispatch:
@@ -13,8 +13,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        lfs: true
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
