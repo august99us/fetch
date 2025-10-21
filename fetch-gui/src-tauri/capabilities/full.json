@@ -1,6 +1,6 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "fullapp",
+  "identifier": "full",
   "description": "Capability for the full app window",
   "windows": ["full"],
   "permissions": [

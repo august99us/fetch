@@ -24,16 +24,22 @@
   }
 
   async function openFull() {
-    const fullWindow = new WebviewWindow('full', {
-      url: "/search",
-      title: "Fetch",
-      width: 1200,
-      height: 900,
-    });
+    let fullWindow = await WebviewWindow.getByLabel("full");
+    if (!fullWindow) {
+      // Full window doesn't exist. create it.
+      fullWindow = new WebviewWindow('full', {
+        url: "/search",
+        title: "Fetch",
+        width: 1200,
+        height: 900,
+        center: true,
+      });
+      await fullWindow.once('tauri://created', function () {
+        console.log("Full window created");
+      })
+    }
 
-    await fullWindow.once('tauri://created', function () {
-      console.log("Full window created");
-    })
+    fullWindow.show();
   }
 
   async function openIndex(index: number) {
@@ -189,8 +195,9 @@
       console.log(`Resizing window to content: ${bodyWidth}x${bodyHeight}`);
 
       await appWindow.setSize(new PhysicalSize(bodyWidth, bodyHeight));
+      await appWindow.center();
     } catch (error) {
-      console.error("Error resizing window:", error);
+      console.error("Error resizing and centering window:", error);
     }
   }
 
@@ -248,6 +255,7 @@
           placeholder="Start typing to search or press enter to open full app."
           bind:value={query}
           oninput={queryChanged}
+          autocomplete="off"
           autofocus
         />
         <button type="submit" class="logo-button">

@@ -13,7 +13,6 @@ fn main() {
     // Download ONNX Runtime BEFORE calling tauri_build
     download_onnx_runtime();
 
-    println!("cargo:warning=All tauri stuff now");
     // Now build Tauri app
     tauri_build::try_build(Attributes::new()).unwrap_or_else(|e| panic!("tauri error: {:?}", e.backtrace()));
 }

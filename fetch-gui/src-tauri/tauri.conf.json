@@ -12,13 +12,13 @@
   "app": {
     "windows": [
       {
-        "label": "quick",
-        "url": "/",
-        "width": 800,
-        "height": 69,
+        "label": "full",
+        "url": "/search",
+        "title": "Fetch",
+        "width": 1200,
+        "height": 900,
         "resizable": true,
-        "decorations": false,
-        "transparent": true
+        "center": true
       }
     ],
     "security": {
