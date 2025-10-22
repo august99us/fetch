@@ -8,6 +8,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let models_folder = PathBuf::from("bundle/models");
+    println!("cargo:rerun-if-changed=bundle/");
 
     match download_hf_model(
         "siglip2-base-patch16-512", 

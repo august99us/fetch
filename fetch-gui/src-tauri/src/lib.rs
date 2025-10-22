@@ -206,20 +206,31 @@ fn summon_quick_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>>
         window.set_focus()?;
         return Ok(window);
     } else {
-        return Ok(WebviewWindowBuilder::new(
+        let mut builder = WebviewWindowBuilder::new(
             app,
             "quick",
             WebviewUrl::App("/".into())
         )
         .inner_size(800.0, 69.0)
-        .transparent(true)
         .decorations(false)
         .always_on_top(true)
         .resizable(false)
         .center()
         .focusable(true)
-        .focused(true)
-        .build()?);
+        .focused(true);
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            // attributes on expressions are experimental
+            // see issue #15701 <https://github.com/rust-lang/rust/issues/15701> for more information
+            // add `#![feature(stmt_expr_attributes)]` to the crate attributes to enable
+            // this compiler was built on 2025-10-20; consider upgrading it if it is out of date
+            //
+            // Apparently, a block like this is fine.
+            builder = builder.transparent(true);
+        }
+
+        return Ok(builder.build()?);
     }
 }
 
