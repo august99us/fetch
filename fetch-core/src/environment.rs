@@ -1,5 +1,6 @@
 use std::error::Error;
 use camino::Utf8Path;
+use log::{error, info};
 use ort::execution_providers::*;
 
 use crate::indexing::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, SessionPoolExt};
@@ -61,11 +62,11 @@ pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), Box<dyn Error>> 
 
     match result {
         Ok(_) => {
-            println!("ONNX Runtime initialized successfully");
+            info!("ONNX Runtime initialized successfully");
             Ok(())
         },
         Err(e) => {
-            eprintln!("Failed to initialize ONNX Runtime: {}", e);
+            error!("Failed to initialize ONNX Runtime: {}", e);
             Err(e.into())
         }
     }

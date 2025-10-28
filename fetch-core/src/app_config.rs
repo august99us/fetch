@@ -75,8 +75,6 @@ pub fn get_default_preview_directory() -> Utf8PathBuf {
 /// is missing from the configuration.
 pub fn get_watchlist_file_path() -> Utf8PathBuf {
     let daemon_config = get_daemon_config().expect("Failed to load daemon config");
-    println!("{}", daemon_config.get_string("watchlist_file")
-        .expect("Failed to get watchlist file from daemon config"));
 
     Utf8PathBuf::from(daemon_config.get_string("watchlist_file")
         .expect("Failed to get watchlist file from daemon config")

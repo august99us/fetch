@@ -1,6 +1,7 @@
 use std::{collections::HashMap, future::Future, hash::{DefaultHasher, Hash, Hasher}, io, pin::Pin, sync::LazyLock};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use log::info;
 use tokio::fs::{self, File};
 
 use crate::{app_config, previewable::{PreviewError, PreviewType}};
@@ -90,7 +91,7 @@ pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, Pr
     fs::write(&preview_path, &bytes).await
         .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })?;
 
-    println!("Generated preview for file: {} at {}", path, preview_path);
+    info!("Generated preview for file: {} at {}", path, preview_path);
 
     Ok(Some(preview_path))
 }

@@ -1,10 +1,11 @@
-use std::{future::Future, marker::PhantomData, sync::{Arc, LazyLock}};
+use std::{future::Future, marker::PhantomData, sync::{Arc, LazyLock, atomic::{AtomicI32, Ordering}}};
 
-use arrow::{array::{AsArray, FixedSizeListBuilder, Float32Builder, StringBuilder, UInt64Builder}, datatypes::Float32Type};
-use arrow_array::{Array, ArrayRef, FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, RecordBatchReader, StructArray};
+use arrow::array::{StringBuilder, UInt64Builder};
+use arrow_array::{Array, ArrayRef, Float32Array, RecordBatch, RecordBatchIterator, RecordBatchReader, StructArray};
 use arrow_schema::{DataType, Field, Schema};
 use futures::stream::StreamExt;
-use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase}, table::merge::MergeInsertBuilder, Connection, DistanceType, Table};
+use lancedb::{connect, database::CreateTableMode, query::{ExecutableQuery, QueryBase}, table::OptimizeAction, Connection, DistanceType, Table};
+use log::info;
 use serde::Serialize;
 
 use crate::indexing::store::{KeyedSequencedData, KeyedSequencedStore, KeyedSequencedStoreError, QueryByVector, VectorData, VectorQueryResult};
@@ -12,7 +13,7 @@ use crate::indexing::store::{KeyedSequencedData, KeyedSequencedStore, KeyedSeque
 use super::VectorStoreError;
 
 // Number of operations to run before running optimize.
-const OPTIMIZE_PER_OPERATIONS: u16 = 5;
+const OPERATIONS_PER_OPTIMIZE: i32 = 5;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LanceDBError {
@@ -30,21 +31,44 @@ pub enum LanceDBError {
     TableOperation { operation: &'static str, #[source] source: lancedb::error::Error },
 }
 
+pub trait ArrowData {
+    type RowBuilder: RowBuilder<Self>;
+
+    fn schema() -> Arc<Schema>;
+    fn row_builder() -> Self::RowBuilder;
+    fn attribute_to_column_name(attr: &'static str) -> &'static str;
+    fn batch_to_iter(record_batch: RecordBatch) -> impl IntoIterator<Item = Self>;
+}
+
+pub trait RowBuilder<D> {
+    fn append(&mut self, row: D);
+
+    /// Note: returns StructArray to allow nesting within another array if desired
+    fn finish(self) -> Vec<(Arc<Field>, ArrayRef)>;
+}
+impl<D> Extend<D> for dyn RowBuilder<D> {
+    fn extend<T: IntoIterator<Item = D>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|row| self.append(row));
+    }
+}
+
 /// Implements a vector storage index utilizing a LanceDB instance
 /// under the hood.
 #[derive(Clone)]
-struct LanceDBVectorStore {
+struct LanceDBVectorStore<D: ArrowData + VectorData> {
     db: Connection,
     table: Table,
     table_name: String,
     schema: Arc<Schema>,
-    vector_field: Arc<Field>,
     vector_len: u32,
-    ops_to_optimize: u16,
+    ops_to_optimize: Arc<AtomicI32>,
+    _phantom_data: PhantomData<D>,
 }
 
-impl LanceDBVectorStore {
-    pub async fn local(data_dir: &str, table_name: String, vector_len: u32, extended_schema: Option<Schema>) -> Result<LanceDBVectorStore, LanceDBError> {
+impl<D: ArrowData + VectorData> LanceDBVectorStore<D> {
+    pub async fn local(data_dir: &str, table_name: String) -> Result<LanceDBVectorStore<D>, LanceDBError> {
+        let extended_schema = (*D::schema()).clone();
+        let vector_len = D::vector_length();
         // If this cast (usize -> i32) does not work, then there will be issues interacting with Arrow later.
         // This is an implementation detail and may change in the future.
         // Very rarely do i expect this not to work but performing the cast once here will expose the issue
@@ -55,19 +79,14 @@ impl LanceDBVectorStore {
             source: Some(e.into()),
         });
 
-        let vector_field = build_vector_field(vector_len);
-        let base_schema = build_base_schema(vector_field.clone());
-        let schema = if let Some(es) = extended_schema {
-            Arc::new(Schema::try_merge([base_schema, es])
-                .map_err(|e| LanceDBError::InvalidParameter { 
-                    parameter: "data schema or vector length", 
-                    issue: "Data schema and base schema (built from vector length) could not be merged. \
-                        Could there be a key conflict? Data schema must not use 'key', 'vector', or 'sequence_number' keys.",
-                    source: Some(e.into()),
-                })?)
-        } else {
-            Arc::new(base_schema)
-        };
+        let base_schema = build_base_schema();
+        let schema = Arc::new(Schema::try_merge([base_schema, extended_schema])
+            .map_err(|e| LanceDBError::InvalidParameter { 
+                parameter: "data schema", 
+                issue: "Data schema and base schema could not be merged. \
+                    Could there be a key conflict? Data schema must not use 'key' or 'sequence_number' keys.",
+                source: Some(e.into()),
+            })?);
 
         let db = connect(data_dir)
             .execute().await
@@ -80,10 +99,10 @@ impl LanceDBVectorStore {
             db,
             table,
             table_name,
-            vector_field,
             schema,
             vector_len,
-            ops_to_optimize: OPTIMIZE_PER_OPERATIONS,
+            ops_to_optimize: Arc::new(AtomicI32::new(OPERATIONS_PER_OPTIMIZE)),
+            _phantom_data: Default::default(),
         })
     }
 
@@ -108,70 +127,59 @@ impl LanceDBVectorStore {
         Ok(())
     }
 
-    pub async fn merge_insert(builder: MergeInsertBuilder, reader: impl RecordBatchReader) -> Result<(), LanceDBError> {
+    pub async fn merge_insert(&self, reader: impl RecordBatchReader + Send + 'static) -> Result<(), LanceDBError> {
+        let mut merge = self.table.merge_insert(&[KEY_COLUMN]);
+        merge.when_matched_update_all(Some(format!("target.{SEQUENCE_NUMBER_COLUMN} < \
+            source.{SEQUENCE_NUMBER_COLUMN}"))).when_not_matched_insert_all();
+
         merge.execute(Box::new(reader)).await
             .map_err(|e| LanceDBError::MergeInsert { source: e })?;
 
+        self.maybe_optimize().await
+    }
+
+    pub async fn delete(&self, key: String, optional_sequence_number: Option<u64>) -> Result<(), LanceDBError> {
+        let mut delete_condition = format!("{KEY_COLUMN} = '{key}'");
+        if let Some(sn) = optional_sequence_number {
+            delete_condition.push_str(&format!(" AND {SEQUENCE_NUMBER_COLUMN} < {sn}"));
+        }
+
+        self.table.delete(&delete_condition).await
+            .map_err(|e| LanceDBError::Delete { source: e })?;
+
+        self.maybe_optimize().await
+    }
+
+    async fn maybe_optimize(&self) -> Result<(), LanceDBError> {
+        // Atomically decrement the counter and get the previous value
+        let prev_count = self.ops_to_optimize.fetch_sub(1, Ordering::Relaxed);
+
+        // If the previous count was <= 1, it means after decrement it's <= 0
+        // so we should optimize and reset the counter
+        if prev_count <= 1 {
+            // Reset the counter immediately to reduce the probability of multiple threads
+            // both triggering optimization
+            self.ops_to_optimize.store(OPERATIONS_PER_OPTIMIZE, Ordering::Relaxed);
+
+            info!("Optimizing table: {}", self.table_name);
+            // Run optimization (this may take a while, but counter is already reset)
+            self.table.optimize(OptimizeAction::All).await
+                .map_err(|e| LanceDBError::Optimize { original_operation: "merge_insert", source: e })?;
+        }
         Ok(())
     }
 }
 
-pub struct LanceDBEmbeddingStore<D: ArrowData, V: VectorData<D>> {
-    vector_store: LanceDBVectorStore,
-    _phantom_data: PhantomData<D>,
-    _phantom_embedded: PhantomData<V>,
-}
-
-impl<D: ArrowData, V: VectorData<D>> LanceDBEmbeddingStore<D, V> {
-    /// Construct a new LanceDBStore, given an file directory to store the data and an embedder to use to embed
-    /// data before storing.
-    pub async fn local(data_dir: &str, table_name: String) -> Result<LanceDBEmbeddingStore<D, V>, LanceDBError> {
-        let data_schema = (*D::schema()).clone();
-        let vector_len = V::vector_length();
-
-        let vector_store = LanceDBVectorStore::local(
-            data_dir,
-            table_name,
-            vector_len,
-            Some(data_schema)
-        ).await?;
-
-        Ok(LanceDBEmbeddingStore {
-            vector_store,
-            _phantom_data: Default::default(),
-            _phantom_embedded: Default::default(),
-        })
-    }
-    
-    // development function to clear all the data from an instantiated LanceDBStore
-    pub async fn clear_all(&mut self) -> Result<(), LanceDBError> {
-        self.vector_store.clear_all().await
-    }
-}
-
-impl<K: Serialize, D: ArrowData, V: KeyedSequencedData<K> + VectorData<D>> KeyedSequencedStore<K, V> for LanceDBEmbeddingStore<D, V> {
-    async fn put(&self, data: Vec<V>) -> Result<(), KeyedSequencedStoreError> {
-        let mut row_builder = D::row_builder();
+impl<K: Serialize, D: ArrowData + KeyedSequencedData<K> + VectorData> KeyedSequencedStore<K, D> for LanceDBVectorStore<D> {
+    async fn put(&self, data: Vec<D>) -> Result<(), KeyedSequencedStoreError> {
         let mut key_array = StringBuilder::new();
-        let mut vector_array = FixedSizeListBuilder::new(Float32Builder::new(), 
-            // unwrap okay here because theoretically, u32->i32 cast is checked earlier during constructor
-            self.vector_store.vector_len.try_into().unwrap());
+        let mut row_builder = D::row_builder();
         let mut sequence_array = UInt64Builder::new();
-        for vec_data in data {
-            key_array.append_value(serde_json::to_string(&vec_data.get_key()).map_err(|e| 
+        for arrow_data in data {
+            key_array.append_value(serde_json::to_string(&arrow_data.get_key()).map_err(|e| 
                 KeyedSequencedStoreError::Serialization { element: "key".to_owned(), source: e.into() })?);
-            sequence_array.append_value(vec_data.get_sequence_num());
-            let (d, v) = vec_data.take_data_and_vector();
-
-            // check vector lengths at this point, before processing and then committing data
-            check_vector_length(v.len() as u32, self.vector_store.vector_len)
-                .map_err(|e| KeyedSequencedStoreError::Other { source: e.into() })?;
-
-            row_builder.append(d);
-            for f in v {
-                vector_array.values().append_value(f);
-            }
-            vector_array.append(true);
+            sequence_array.append_value(arrow_data.get_sequence_num());
+            row_builder.append(arrow_data);
         }
 
         let mut data_columns = vec![
@@ -180,7 +188,6 @@ impl<K: Serialize, D: ArrowData, V: KeyedSequencedData<K> + VectorData<D>> Keyed
         for field_and_array in row_builder.finish() {
             data_columns.push(field_and_array)
         }
-        data_columns.push((self.vector_store.vector_field.clone(), Arc::new(vector_array.finish()) as ArrayRef));
         data_columns.push((SEQUENCE_NUMBER_FIELD.clone(), Arc::new(sequence_array.finish()) as ArrayRef));
 
         let struct_array = StructArray::from(data_columns);
@@ -190,35 +197,19 @@ impl<K: Serialize, D: ArrowData, V: KeyedSequencedData<K> + VectorData<D>> Keyed
             vec![RecordBatch::from(struct_array)]
                 .into_iter()
                 .map(Ok),
-            self.vector_store.schema.clone(),
+            self.schema.clone(),
         );
 
-        let mut merge = self.vector_store.table.merge_insert(&[KEY_COLUMN]);
-        merge.when_matched_update_all(Some(format!("target.{SEQUENCE_NUMBER_COLUMN} < \
-            source.{SEQUENCE_NUMBER_COLUMN}"))).when_not_matched_insert_all();
-
-        merge.execute(Box::new(reader)).await
-            .map_err(|e| KeyedSequencedStoreError::RecordOperation {operation: "Merge insert on record",
-                source: e.into() })?;
-
-        // TODO: optimize the table? create index for vector so it's not kNN?
-        self.vector_store.table.optimize(action)
-
-        Ok(())
+        self.merge_insert(reader).await
+            .map_err(|e| KeyedSequencedStoreError::RecordOperation { operation: "put", source: e.into() })
     }
 
     async fn clear(&self, key: K, optional_sequence_number: Option<u64>) -> Result<(), KeyedSequencedStoreError> {
         let key_string = serde_json::to_string(&key).map_err(|e| 
                 KeyedSequencedStoreError::Serialization { element: "key".to_owned(), source: e.into() })?;
-        let mut delete_condition = format!("{KEY_COLUMN} = '{key_string}'");
-        if let Some(sn) = optional_sequence_number {
-            delete_condition.push_str(&format!(" AND {SEQUENCE_NUMBER_COLUMN} < {sn}"));
-        }
 
-        self.vector_store.table.delete(&delete_condition).await
-            .map_err(|e| KeyedSequencedStoreError::RecordOperation { operation: "Delete record",
-                source: e.into() })?;
-        Ok(())
+        self.delete(key_string, optional_sequence_number).await
+            .map_err(|e| KeyedSequencedStoreError::RecordOperation { operation: "clear", source: e.into() })
     }
 
     async fn get(&self, key: K) -> Result<D, KeyedSequencedStoreError> {
@@ -226,23 +217,25 @@ impl<K: Serialize, D: ArrowData, V: KeyedSequencedData<K> + VectorData<D>> Keyed
     }
 }
 
-impl<D: ArrowData, V: VectorData<D>> QueryByVector<D, V> for LanceDBEmbeddingStore<D, V> {
+impl<D: ArrowData + VectorData> QueryByVector<D> for LanceDBVectorStore<D> {
     fn query_vector(&self, vector: Vec<f32>) -> impl Future<Output = Result<Vec<VectorQueryResult<D>>, VectorStoreError>> {
         self.query_vector_n(vector, 0, 0)
     }
 
     async fn query_vector_n(&self, vector: Vec<f32>, num_results: u32, offset: u32) -> Result<Vec<VectorQueryResult<D>>, VectorStoreError> {
-        check_vector_length(vector.len() as u32, V::vector_length());
-        check_vector_length(self.vector_store.vector_len, V::vector_length());
+        check_vector_length(vector.len() as u32, D::vector_length());
+        check_vector_length(self.vector_len, D::vector_length());
 
-        let query = self.vector_store.table.query()
+        let vector_column = D::attribute_to_column_name(D::vector_attribute());
+
+        let query = self.table.query()
             // This normally returns errors because lancedb automatically uses an embedding model if registered
             // to convert a query into a vector. However without a registered model lancedb just expects the
             // actual vector to be provided here for the query, which is what I have done. Therefore this should
             // theoretically never cause an issue.
             .nearest_to(vector).expect("Unexpected issue converting Vec<f32> to QueryVector")
             .distance_type(DistanceType::Dot)
-            .column(VECTOR_COLUMN)
+            .column(vector_column)
             // u32 -> usize casts, should always be fine
             .limit(num_results as usize)
             .offset(offset as usize);
@@ -254,18 +247,6 @@ impl<D: ArrowData, V: VectorData<D>> QueryByVector<D, V> for LanceDBEmbeddingSto
         while let Some(rb) = result_stream.next().await {
             match rb {
                 Ok(batch) => {
-                    let vector_column = batch.column_by_name(VECTOR_COLUMN)
-                        .expect("vector column should exist in vector query")
-                        .as_any().downcast_ref::<FixedSizeListArray>()
-                        .expect("Returned query result of vectors could not be cast to an array")
-                        .iter()
-                        .map(|a| a.expect("vector should exist")
-                            .as_primitive::<Float32Type>()
-                            .values())
-                        // from(&[f32]->Vec)
-                        // into(&ScalarBuffer->&[f32])
-                        .map(|b| Vec::from(b.into()))
-                        .collect::<Vec<Vec<f32>>>();
                     let distance_column = batch.column_by_name("_distance") // Pick out the distance column
                         .expect("_distance column should exist in vector query")
                         // cast to a float32 array
@@ -279,26 +260,22 @@ impl<D: ArrowData, V: VectorData<D>> QueryByVector<D, V> for LanceDBEmbeddingSto
                         .iter().map(|s| s.expect("Missing f32 in optional for non-nullable distance column"))
                         .collect::<Vec<f32>>();
 
-                    let vector_iter = vector_column.into_iter();
-                    let data_iter = D::batch_to_iter(batch).into_iter();
-                    let distance_iter = distance_column.into_iter();
+                    let mut data_iter = D::batch_to_iter(batch).into_iter();
+                    let mut distance_iter = distance_column.into_iter();
 
                     while let (
                         Some(data),
-                        Some(vector),
                         Some(distance)
                     ) = (
                         data_iter.next(),
-                        vector_iter.next(),
                         distance_iter.next()
                     ) {
                         result_list.push(VectorQueryResult {
                             result: data,
-                            vector,
                             distance,
                         })
                     }
-                    if data_iter.next().is_some() || vector_iter.next().is_some() || distance_iter.next().is_some() {
+                    if data_iter.next().is_some() || distance_iter.next().is_some() {
                         // TODO: probably better to return error here
                         panic!("columns in query result should not have different lengths!");
                     }
@@ -310,13 +287,9 @@ impl<D: ArrowData, V: VectorData<D>> QueryByVector<D, V> for LanceDBEmbeddingSto
     }
 }
 
-pub mod integrations;
-
 // Private variables and methods
 
-const TABLE_NAME: &str = "vector_index";
 const KEY_COLUMN: &str = "key";
-const VECTOR_COLUMN: &str = "vector";
 const SEQUENCE_NUMBER_COLUMN: &str = "sequence_number";
 
 static KEY_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
@@ -327,27 +300,11 @@ static SEQUENCE_NUMBER_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
     Arc::new(Field::new(SEQUENCE_NUMBER_COLUMN, DataType::UInt64, false))
 });
 
-fn build_vector_field(vector_len: u32) -> Arc<Field> {
-    Arc::new(Field::new(
-        VECTOR_COLUMN,
-        // have not been able to make this work as non-nullable. no matter what I put when inserting records,
-        // lancedb somehow always ends up assuming the records are nullable while the schema is not.
-        // if I then change this fixed size list data type to accept null but dont also change the produced records,
-        // suddenly the records are not nullable anymore.
-        //
-        // vector_len.try_into() --> u32 -> i32 conversion. will most likely work and will error if absurd vector_
-        // len provided (> signed int max)
-        DataType::new_fixed_size_list(DataType::Float32, vector_len.try_into().unwrap(), true), // casting to i32
-        false,
-    ));
-}
-
 /// Builds a base schema object given a number of floats that the embedded vector will occupy
 /// This schema object should be merged with the data schema to make the full schema
-fn build_base_schema(vector_field: Arc<Field>) -> Schema {
+fn build_base_schema() -> Schema {
     Schema::new(vec![
         KEY_FIELD,
-        vector_field,
         SEQUENCE_NUMBER_FIELD,
     ])
 }

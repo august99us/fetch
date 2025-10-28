@@ -208,3 +208,6 @@ fn get_image_session() -> MutexGuard<'static, Session> {
 fn get_text_session() -> MutexGuard<'static, Session> {
     TEXT_SESSION_POOL.get_session()
 }
+
+mod integrations;
+pub use integrations::*;

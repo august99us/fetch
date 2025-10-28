@@ -1,5 +1,6 @@
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
 use camino::{Utf8Path, Utf8PathBuf};
+use log::warn;
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
 
@@ -77,7 +78,7 @@ static BASE_RESOURCE_DIRECTORY: OnceLock<Utf8PathBuf> = OnceLock::new();
 /// set or a model has already been loaded, this will be ignored.
 pub fn init_model_resource_directory(path: &Utf8Path) {
     BASE_RESOURCE_DIRECTORY.set(path.to_path_buf()).unwrap_or_else(|_| {
-        eprintln!("Attempting to change previously resolved base model resource directory, ignoring");
+        warn!("Attempting to change previously resolved base model resource directory, ignoring");
     });
 }
 

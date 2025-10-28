@@ -73,19 +73,19 @@ pub enum VectorStoreError {
     Query { #[source] source: anyhow::Error }
 }
 
-pub trait VectorData<D> {
-    fn take_data_and_vector(self) -> (D, Vec<f32>);
+pub trait VectorData {
+    fn get_vector(&self) -> &[f32];
+    fn vector_attribute() -> &'static str;
     fn vector_length() -> u32;
 }
 
-pub trait QueryByVector<D, E: VectorData<D>> {
+pub trait QueryByVector<D: VectorData> {
     async fn query_vector(&self, vector: Vec<f32>) -> Result<Vec<VectorQueryResult<D>>, VectorStoreError>;
     async fn query_vector_n(&self, vector: Vec<f32>, num_results: u32, offset: u32) -> Result<Vec<VectorQueryResult<D>>, VectorStoreError>;
 }
 
-pub struct VectorQueryResult<D> {
+pub struct VectorQueryResult<D: VectorData> {
     pub result: D,
-    pub vector: Vec<f32>,
     pub distance: f32,
 }
 

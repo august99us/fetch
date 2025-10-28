@@ -7,28 +7,25 @@ use chrono::{Utc, TimeZone};
 use serde_json::Value;
 use serde_json::Map;
 
+use crate::indexing::store::lancedb::ArrowData;
+use crate::indexing::store::lancedb::RowBuilder;
+use crate::indexing::store::Filterable;
 use crate::indexing::ChunkFile;
 
-pub trait ArrowData {
-    fn schema() -> Arc<Schema>;
-    fn row_builder() -> impl RowBuilder<Self>;
-    fn attribute_to_column_name(attr: &str) -> &str;
-    fn batch_to_iter(record_batch: RecordBatch) -> impl IntoIterator<Item = Self>;
-}
-
-pub trait RowBuilder<D> {
-    fn append(&mut self, row: D);
-
-    /// Note: returns StructArray to allow nesting within another array if desired
-    fn finish(self) -> Vec<(Arc<Field>, ArrayRef)>;
-}
-impl<D> Extend<D> for dyn RowBuilder<D> {
-    fn extend<T: IntoIterator<Item = D>>(&mut self, iter: T) {
-        iter.into_iter().for_each(|row| self.append(row));
-    }
-}
-
 // Chunkfile ArrowData integrations
+
+// Attribute names (field names on the ChunkFile struct)
+const ORIGINAL_FILE_ATTR: &str = "original_file";
+const CHUNK_CHANNEL_ATTR: &str = "chunk_channel";
+const CHUNK_SEQUENCE_ID_ATTR: &str = "chunk_sequence_id";
+const CHUNKFILE_ATTR: &str = "chunkfile";
+const CHUNK_LENGTH_ATTR: &str = "chunk_length";
+const FILE_CREATION_DATE_ATTR: &str = "original_file_creation_date";
+const FILE_MODIFIED_DATE_ATTR: &str = "original_file_modified_date";
+const FILE_SIZE_ATTR: &str = "original_file_size";
+const FILE_TAGS_ATTR: &str = "original_file_tags";
+
+// Column names (Arrow schema column names)
 const ORIGINAL_FILE_COLUMN_NAME: &str = "original_file";
 const CHUNK_CHANNEL_COLUMN_NAME: &str = "chunk_channel";
 const CHUNK_SEQUENCE_ID_COLUMN_NAME: &str = "chunk_sequence_id";
@@ -141,11 +138,13 @@ impl RowBuilder<ChunkFile> for ChunkFileRowBuilder {
 }
 
 impl ArrowData for ChunkFile {
+    type RowBuilder = ChunkFileRowBuilder;
+
     fn schema() -> Arc<Schema> {
         CHUNKFILE_SCHEMA
     }
 
-    fn row_builder() -> impl RowBuilder<Self> {
+    fn row_builder() -> Self::RowBuilder {
         ChunkFileRowBuilder::new()
     }
 
@@ -195,6 +194,21 @@ impl ArrowData for ChunkFile {
                 original_file_tags: tags,
             }
         })
+    }
+    
+    fn attribute_to_column_name(attr: &'static str) -> &'static str {
+        match attr {
+            ORIGINAL_FILE_ATTR => ORIGINAL_FILE_COLUMN_NAME,
+            CHUNK_CHANNEL_ATTR => CHUNK_CHANNEL_COLUMN_NAME,
+            CHUNK_SEQUENCE_ID_ATTR => CHUNK_SEQUENCE_ID_COLUMN_NAME,
+            CHUNKFILE_ATTR => CHUNKFILE_COLUMN_NAME,
+            CHUNK_LENGTH_ATTR => CHUNK_LENGTH_COLUMN_NAME,
+            FILE_CREATION_DATE_ATTR => FILE_CREATION_DATE_COLUMN_NAME,
+            FILE_MODIFIED_DATE_ATTR => FILE_MODIFIED_DATE_COLUMN_NAME,
+            FILE_SIZE_ATTR => FILE_SIZE_COLUMN_NAME,
+            FILE_TAGS_ATTR => FILE_TAGS_COLUMN_NAME,
+            _ => panic!("Unknown ChunkFile attribute: {}", attr),
+        }
     }
 }
 
