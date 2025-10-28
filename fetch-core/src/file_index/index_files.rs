@@ -2,7 +2,7 @@ use std::{future::Future, time::SystemTime};
 
 use camino::Utf8Path;
 
-use crate::{embeddable::Embeddable, previewable::{PossiblyPreviewable, PreviewError, PreviewedFile}, vector_store::{IndexVector, QueryVectorKeys}};
+use crate::{indexing::Indexable, previewable::{PossiblyPreviewable, PreviewError, PreviewedFile}, vector_store::{IndexVector, QueryVectorKeys}};
 
 use super::FileIndexer;
 

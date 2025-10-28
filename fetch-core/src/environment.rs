@@ -2,7 +2,7 @@ use std::error::Error;
 use camino::Utf8Path;
 use ort::execution_providers::*;
 
-use crate::embeddable::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, SessionPoolExt};
+use crate::indexing::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, SessionPoolExt};
 
 /// Initialize ONNX Runtime with optional library path
 ///
@@ -72,7 +72,7 @@ pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), Box<dyn Error>> 
 }
 
 // Re-export from session_pool
-pub use crate::embeddable::session_pool::init_model_resource_directory;
+pub use crate::indexing::session_pool::init_model_resource_directory;
 
 /// Init function that retrieves indexing resources and then immediately drops them to initialize lazy cells
 pub fn init_indexing(base_model_dir: Option<&Utf8Path>) {

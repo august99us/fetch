@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{embeddable::Embeddable, vector_store::{IndexVector, QueryVectorKeys}};
+use crate::{indexing::Indexable, vector_store::{IndexVector, QueryVectorKeys}};
 
 use super::FileIndexer;
 

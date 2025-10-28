@@ -15,9 +15,9 @@ fn main() {
         "august99us/siglip2-base-patch16-512-fetch", 
         &models_folder
     ) {
-        Ok(_) => println!("cargo:warning=Successfully downloaded model files"),
+        Ok(_) => println!("cargo:warning=Successfully loaded model files"),
         Err(e) => {
-            println!("cargo:error=Failed to download model files: {}", e);
+            println!("cargo:error=Failed to load model files: {}", e);
         }
     }
 }

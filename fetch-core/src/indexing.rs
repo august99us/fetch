@@ -1,17 +1,63 @@
 use std::sync::MutexGuard;
 
-pub mod session_pool;
+use camino::{Utf8Path, Utf8PathBuf};
+use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use ndarray::{Array, Axis};
 use ort::{inputs, session::Session, value::TensorRef};
+use serde_json::{Map, Value};
 use tokio::task;
 
-use crate::{embeddable::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, TEXT_TOKENIZER}, previewable::{PreviewType, PreviewedFile}};
+use crate::{indexing::{session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, TEXT_TOKENIZER}, store::KeyedSequencedData}, previewable::{PreviewType, PreviewedFile}};
 use session_pool::SessionPoolExt;
+
+pub trait IndexProvider {
+    fn provides_indexing_for_extensions() -> Vec<String>;
+    fn index(path: &Utf8Path) -> Result<(), anyhow::Error>;
+    fn clear(path: &Utf8Path) -> Result<(), anyhow::Error>;
+    fn query(str: &str) -> Result<Vec<Utf8PathBuf>, anyhow::Error>;
+}
+
+pub trait ChunkingIndexProvider {
+    fn query_chunks(str: &str) -> Result<Vec<ChunkFile>, anyhow::Error>;
+}
+
+pub struct ChunkFile {
+    // Composite key
+    pub original_file: Utf8PathBuf,
+    pub chunk_channel: String,
+    pub chunk_sequence_id: f32,
+    // Other data pieces
+    pub chunkfile: Utf8PathBuf,
+    pub chunk_length: f32,
+    pub original_file_creation_date: DateTime<Utc>,
+    pub original_file_modified_date: DateTime<Utc>,
+    pub original_file_size: u64,
+    pub original_file_tags: Map<String, Value>,
+}
+
+impl KeyedSequencedData<String> for ChunkFile {
+    fn get_key(&self) -> String {
+        // Create a unique key from the composite key fields
+        format!("{}::{}::{}",
+            self.original_file,
+            self.chunk_channel,
+            self.chunk_sequence_id)
+    }
+
+    fn get_sequence_num(&self) -> u64 {
+        // Use modification timestamp as sequence number for versioning
+        // Higher values = newer versions
+        // Note: timestamp_millis() returns i64, which overflows around year 292,277,026 CE
+        // (approximately 292 million years from Unix epoch). This cast to u64 is safe for
+        // all reasonable file modification dates after 1970-01-01.
+        self.original_file_modified_date.timestamp_millis() as u64
+    }
+}
 
 /// Adds the embeddable trait, signifying that a struct or object has data that it can use to
 /// create an embedding.
-pub trait Embeddable {
+pub trait Indexable {
     /// Calculates the embedding for the presented data in the objects using the Embedder passed in the
     /// arguments. Embedder model should support both image and text embeddings.
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError>;
@@ -31,7 +77,7 @@ pub enum EmbeddingError {
     Unknown { msg: &'static str, #[source] source: anyhow::Error },
 }
 
-impl Embeddable for PreviewedFile {
+impl Indexable for PreviewedFile {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         match self.r#type {
             PreviewType::Image => {
@@ -94,7 +140,7 @@ impl Embeddable for PreviewedFile {
     }
 }
 
-impl Embeddable for &str {
+impl Indexable for &str {
     async fn calculate_embedding(&self) -> Result<Vec<f32>, EmbeddingError> {
         // clone for async task, lower for siglip2
         let query_copy = self.to_string();
@@ -146,6 +192,12 @@ impl Embeddable for &str {
         result
     }
 }
+
+pub mod basic_image_index_provider;
+pub mod chunker;
+pub mod embedder;
+pub mod session_pool;
+pub mod store;
 
 // Private variables and functions
 
