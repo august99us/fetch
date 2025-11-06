@@ -1,2 +1,3 @@
 default_index_directory = "%%AppDataDirectory%%/data/default/index"
+default_chunk_directory = "%%AppDataDirectory%%/data/default/chunk"
 default_preview_directory = "%%AppDataDirectory%%/data/default/preview"

@@ -6,13 +6,8 @@
   import ResultsArea from "$lib/components/search/ResultsArea.svelte";
   import Pagination from "$lib/components/search/Pagination.svelte";
   import IndexDrawer from "$lib/components/index/IndexDrawer.svelte";
+  import ReactiveBackgroundFetchQuery from "$lib/structs/ReactiveBackgroundFetchQuery.svelte";
   import "$lib/styles/colors.css";
-
-  interface QueryResult {
-    name: string;
-    path: string;
-    score: number;
-  }
 
   interface FileResult {
     path: string;
@@ -20,42 +15,30 @@
   }
 
   let query = $state("");
-  let currentPage = $state(1);
-  let loading = $state(false);
-  let resultsPromise = $state<Promise<FileResult[]> | undefined>(undefined);
+  let fetchQuery = $state<ReactiveBackgroundFetchQuery | undefined>(undefined);
   let resultsArea: ResultsArea | undefined = $state();
 
-  // TODO: Implement query execution
-  async function handleSearch(searchQuery: string, page: number = 1) {
+  // Derived state
+  let results = $derived<FileResult[]>(
+    (fetchQuery?.results ?? []).map(r => ({ path: r.path, name: r.name }))
+  );
+  let loading = $derived(fetchQuery?.querying ?? false);
+
+  async function handleSearch(searchQuery: string) {
     if (!searchQuery || searchQuery.trim() === "") {
-      resultsPromise = undefined;
+      fetchQuery = undefined;
       return;
     }
 
-    loading = true;
-    try {
-      // Call the Tauri query command
-      resultsPromise = invoke<QueryResult[]>("query", {
-        query: searchQuery,
-        page
-      })
-      // Transform results to FileResult format
-      .then((resArray: QueryResult[]) => 
-        resArray.map((value: QueryResult): FileResult => { 
-          return { path: value.path, name: value.name };
-        })
-      );
-    } catch (error) {
-      console.error("Error querying index:", error);
-      resultsPromise = undefined;
-    } finally {
-      loading = false;
-    }
+    console.log("Creating new query for:", searchQuery);
+    fetchQuery = new ReactiveBackgroundFetchQuery(searchQuery, 9);
   }
 
   async function handleChangePage(newPage: number) {
     console.log("Changing to page:", newPage);
-    await handleSearch(query, newPage);
+    if (fetchQuery) {
+      fetchQuery.page = newPage;
+    }
   }
 
   // TODO: Implement file opening
@@ -96,6 +79,10 @@
       window.removeEventListener('keydown', handleKeyDown);
     };
   });
+
+  $effect(() => {
+    fetchQuery?.effect();
+  })
 </script>
 
 <main class="full-search">
@@ -108,35 +95,23 @@
   <Filtering />
 
   <div class="results-container">
-    {#if resultsPromise}
-      {#await resultsPromise}
-        <div class="spinner centered-above"></div>
-        <ResultsArea
-          bind:this={resultsArea}
-          results = {[]}
-          disabled={loading}
-        />
-      {:then results}
-        <ResultsArea
-          bind:this={resultsArea}
-          {results}
-          disabled={loading}
-          onopen={handleOpenFile}
-        />
-      {:catch error}
-        <div>
-          <p>Error loading results</p>
-        </div>
-      {/await}
+    {#if fetchQuery}
+      <ResultsArea
+        bind:this={resultsArea}
+        {results}
+        loading={loading}
+        onopen={handleOpenFile}
+      />
     {:else}
-      <div class="empty-state" class:disabled={loading}>
+      <div class="empty-state">
         <p>Nothing yet!</p>
       </div>
     {/if}
   </div>
 
   <Pagination
-    bind:currentPage
+    currentPage={fetchQuery?.page ?? 1}
+    totalPages={fetchQuery?.maxPages}
     disabled={!resultsArea || loading}
     onchangepage={handleChangePage}
   />
@@ -185,18 +160,5 @@
     padding-top: 5rem;
     color: var(--color-input-placeholder);
     font-size: 1.1em;
-  }
-
-  .empty-state.disabled {
-    opacity: 0.6;
-    filter: grayscale(100%);
-  }
-
-  .centered-above {
-    /* Center the element in container and place above everything in the floor */
-    position: absolute;
-    margin: auto;
-    inset: 0;
-    z-index: 99;
   }
 </style>

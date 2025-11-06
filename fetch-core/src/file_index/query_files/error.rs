@@ -11,15 +11,17 @@ pub struct FileQueryingError {
 }
 #[derive(Debug)]
 pub enum FileQueryingErrorType {
-    Embedding,
-    Query,
+    CursorNotFound,
+    CursorStore,
+    IndexProvider,
 }
 impl fmt::Display for FileQueryingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self.r#type {
-            FileQueryingErrorType::Embedding => write!(f, "Unhandled error while generating embedding for \
-                file query {:?}", self.query),
-            FileQueryingErrorType::Query => write!(f, "Error querying index with query {:?}", self.query),
+            FileQueryingErrorType::CursorNotFound => write!(f, "Cursor id could not be found. Try rerunning \
+                the query from the start?"),
+            FileQueryingErrorType::CursorStore => write!(f, "Error while interacting with the cursor store"),
+            FileQueryingErrorType::IndexProvider => write!(f, "Error querying index with query {:?}", self.query),
         }
     }
 }

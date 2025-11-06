@@ -3,8 +3,6 @@ use camino::Utf8Path;
 use log::{error, info};
 use ort::execution_providers::*;
 
-use crate::indexing::session_pool::{IMAGE_SESSION_POOL, TEXT_SESSION_POOL, SessionPoolExt};
-
 /// Initialize ONNX Runtime with optional library path
 ///
 /// If `onnx_lib_path` is provided, ONNX Runtime will load its dynamic library
@@ -73,22 +71,23 @@ pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), Box<dyn Error>> 
 }
 
 // Re-export from session_pool
-pub use crate::indexing::session_pool::init_model_resource_directory;
+pub use crate::index::embedding::sessions::init_model_resource_directory;
+use crate::index::embedding::siglip2_image_embedder;
 
-/// Init function that retrieves indexing resources and then immediately drops them to initialize lazy cells
-pub fn init_indexing(base_model_dir: Option<&Utf8Path>) {
+// TODO: implement functionality to init for specific models
+pub fn init_indexing(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
     if let Some(dir) = base_model_dir {
         init_model_resource_directory(dir);
     }
-    // Instantiate and instantly drop the mutex guard to load the sessions
-    let _guard = IMAGE_SESSION_POOL.get_session();
+
+    // do init for models
+    siglip2_image_embedder::init_indexing();
 }
-
-/// Init function that retrieves querying resources and then immediately drops them to initialize lazy cells
-pub fn init_querying(base_model_dir: Option<&Utf8Path>) {
+pub fn init_querying(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
     if let Some(dir) = base_model_dir {
         init_model_resource_directory(dir);
     }
-    // Instantiate and instantly drop the mutex guard to load the sessions
-    let _guard = TEXT_SESSION_POOL.get_session();
+
+    // do init for models
+    siglip2_image_embedder::init_querying();
 }

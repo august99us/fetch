@@ -4,12 +4,17 @@
   import { onMount } from "svelte";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import ReactiveBackgroundFetchQuery, { type ResolvedFileResult } from "$lib/structs/ReactiveBackgroundFetchQuery.svelte";
+    import SpinnerBar from "$lib/components/common/SpinnerBar.svelte";
 
   let query = $state("");
-  let loading = $state(false);
-  let results = $state<QueryResult[]>([]);
+  let fetchQuery = $state<ReactiveBackgroundFetchQuery | undefined>(undefined);
   let selectedIndex = $state(-1);
   let shifted = $state(false);
+
+  // Derived state
+  let results = $derived(fetchQuery?.results ?? []);
+  let loading = $derived(fetchQuery?.querying ?? false);
 
   // Meta actions for the entire page ///////////////////////////////
   async function progress() {
@@ -70,73 +75,37 @@
   }
 
   // Query change tracking and handling ///////////////////////////////
-  let timeoutQuery: string | undefined;
   let timeoutId: number | undefined;
   function queryChanged() {
-    if (timeoutQuery !== query) {
-      // any selections and results are no longer valid
-      selectedIndex = -1;
-      results = [];
+    // Reset selection
+    selectedIndex = -1;
 
-      // query text is not the query we are running right now
-      timeoutQuery = query;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+    // Clear existing timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+
+    // if we have a non-empty query, start a search after debounce
+    if (query && query !== "") {
+      timeoutId = setTimeout(() => {
+        console.log("Creating new query for:", query);
+        fetchQuery = new ReactiveBackgroundFetchQuery(query, 10);
+        selectedIndex = 0;
         timeoutId = undefined;
-      }
-
-      // if we have a non-empty query, start a search
-      if (query && query !== "") {
-        loading = true;
-        timeoutId = setTimeout(() => {
-          fireQuery(timeoutQuery!);
-          timeoutId = undefined;
-        }, 500);
-      } else {
-        loading = false;
-        // cancel any existing searches
-        //
-        // This is done right now by noting down the query that the timeout was fired for,
-        // and ignoring any searches return with a query no longer matching that query.
-        // This will result in extra searches being performed for now.
-      }
+      }, 500);
+    } else {
+      // Clear results for empty query
+      fetchQuery = undefined;
     }
   }
 
-  function fireQuery(query: string) {
-    console.log("Searching for: " + query);
-    queryIndex(query)
-      .then(([q, res]) => {
-        console.log("Got results for query: " + q + " : " + res);
-        if (q === timeoutQuery) {
-          results = res;
-          loading = false;
-          selectedIndex = 0;
-        } else {
-          console.log("Ignoring results for old query: " + q);
-        }
-      })
-      .catch((e) => {
-        console.error("Error querying index: ", e);
-        loading = false;
-      });
-  }
-
-  interface QueryResult {
-    name: string;
-    path: string;
-    score: number;
-  }
-  async function queryIndex(query: string): Promise<[string, QueryResult[]]> {
-    return [query, await invoke("query", { query, page: 1 })];
-  }
-
   // JSX content functions and page utilities //////////////////////////////
-  function parseResultName(result: QueryResult): string {
+  function parseResultName(result: ResolvedFileResult): string {
     return result.name;
   }
 
-  function parseResultDescriptor(result: QueryResult): string {
+  function parseResultDescriptor(result: ResolvedFileResult): string {
     return result.path + " (score: " + result.score.toFixed(2) + ")";
   }
 
@@ -254,6 +223,10 @@
       });
     }
   });
+
+  $effect(() => {
+    fetchQuery?.effect();
+  })
 </script>
 
 <svelte:window onmousemove={handleWindowMouseMove} />
@@ -277,27 +250,26 @@
         </button>
       </span>
     </form>
-    {#if loading||(results.length > 0)}
-      <div id="results-container" class:loading>
+    {#if loading || (results.length > 0)}
+      <div id="results-container">
+        {#each results as result, index}
+          <button
+            bind:this={resultElements[index]}
+            class="result-item"
+            class:selected={index === selectedIndex}
+            transition:fade
+            onmouseover={(e) => handleResultMouseOver(e, index)}
+            onfocus={() => handleResultFocus(index)}
+            onclick={() => handleResultClick(index)}
+          >
+            <span class="result-name">{parseResultName(result)}</span>
+            <span class="result-descriptor">{parseResultDescriptor(result)}</span>
+          </button>
+        {/each}
         {#if loading}
-          <div class="spinner centered-above" in:fade={{ duration: 200 }}></div>
-          <div class="spinner-placeholder"></div>
-        {:else}
-          {#each results as result, index}
-            <button
-              bind:this={resultElements[index]}
-              class="result-item"
-              class:selected={index === selectedIndex}
-              transition:fade
-              onmouseover={(e) => handleResultMouseOver(e, index)}
-              onfocus={() => handleResultFocus(index)}
-              onclick={() => handleResultClick(index)}
-            >
-              <span class="result-name">{parseResultName(result)}</span>
-              <span class="result-descriptor">{parseResultDescriptor(result)}</span>
-            </button>
-          {/each}
+          <SpinnerBar />
         {/if}
+        <div style="height: 0.25rem"></div>
       </div>
     {/if}
   </div>
@@ -405,22 +377,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-#results-container.loading {
-  pointer-events: none;
-  overflow-y: hidden;
-}
-
-.centered-above {
-  /* Center the element in container and place above everything */
-  position: absolute;
-  margin: auto;
-  inset: 0;
-  z-index: 99;
 }
 
 .result-item {

@@ -29,6 +29,7 @@ fetch-core = { path = "../fetch-core" }
 
 anyhow = { workspace = true }
 camino = { workspace = true }
+env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 

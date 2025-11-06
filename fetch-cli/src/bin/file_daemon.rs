@@ -1,8 +1,8 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use crossbeam_channel::{unbounded, Receiver};
-use fetch_core::{app_config, file_index::{index_files::IndexFiles, query_files::QueryFiles, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, file_index::{FileIndexer, index_files::IndexFiles}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
 use notify::{event::{CreateKind, DataChange, ModifyKind}, EventKind, RecursiveMode};
 use notify_debouncer_full::DebouncedEvent;
 use tokio::fs;
@@ -49,9 +49,13 @@ async fn main() -> Result<(), ()>{
     println!("File change tracking daemon is initiating workers...");
 
     let data_directory = app_config::get_default_index_directory();
-    let vector_store = LanceDBStore::new(data_directory.as_str(), 512).await
-        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
-    let file_indexer = FileIndexer::with(vector_store);
+    let siglip_store = LanceDBStore::local_full(
+        data_directory.as_str(),
+        "siglip2_chunkfile".to_owned()
+    ).await
+    .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
+    let basic_image = BasicImageIndexProvider::using(siglip_store);
+    let file_indexer = FileIndexer::with(vec![Arc::new(basic_image)]);
 
     let mut handles = Vec::with_capacity(worker_count);
     let cancellation_token = CancellationToken::new();
@@ -74,8 +78,8 @@ async fn main() -> Result<(), ()>{
     Ok(())
 }
 
-async fn worker_main<I: IndexFiles + QueryFiles>(rx: Receiver<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>, 
-    file_indexer: I, cancellation_token: CancellationToken) {
+async fn worker_main<I: IndexFiles>(rx: Receiver<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
+    file_indexer: I, _cancellation_token: CancellationToken) {
     while let Ok(event_message) = rx.recv() {
         if event_message.is_err() {
             eprintln!("Worker received error: {:?}", event_message.err());
@@ -89,7 +93,7 @@ async fn worker_main<I: IndexFiles + QueryFiles>(rx: Receiver<Result<Vec<Debounc
     }
 }
 
-async fn handle_event<I: IndexFiles + QueryFiles>(file_indexer: &I, debounced_event: DebouncedEvent) {
+async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: DebouncedEvent) {
     match debounced_event.event.kind {
         EventKind::Create(CreateKind::File) => {
             let file_path = <&Utf8Path>::try_from(debounced_event.event.paths.first()

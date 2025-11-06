@@ -1,21 +1,8 @@
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use camino::{Utf8Path, Utf8PathBuf};
 use log::warn;
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use tokenizers::Tokenizer;
-
-pub static IMAGE_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {
-    create_session_pool(1, PoolType::Image)
-});
-
-pub static TEXT_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {
-    create_session_pool(1, PoolType::Text)
-});
-
-pub static TEXT_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
-    let base_dir = get_base_resource_dir();
-    Tokenizer::from_file(base_dir.join(TOKENIZER_PATH)).expect("Error loading tokenizer from file")
-});
 
 pub type SessionPool = Arc<Vec<Mutex<Session>>>;
 
@@ -35,12 +22,7 @@ impl SessionPoolExt for SessionPool {
     }
 }
 
-pub enum PoolType {
-    Image,
-    Text,
-}
-
-pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
+pub fn create_session_pool(pool_size: u32, model_path: &Utf8Path) -> SessionPool {
     Arc::new(
         (0..pool_size)
             .map(|_| {
@@ -53,10 +35,7 @@ pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
 
                 let base_dir = get_base_resource_dir();
 
-                let session_result = match pool_type {
-                    PoolType::Image => session_builder.commit_from_file(base_dir.join(IMAGE_MODEL_PATH)),
-                    PoolType::Text => session_builder.commit_from_file(base_dir.join(TEXT_MODEL_PATH)),
-                };
+                let session_result = session_builder.commit_from_file(base_dir.join(model_path));
 
                 Mutex::new(session_result.expect("Failed to commit model from memory"))
             })
@@ -64,11 +43,10 @@ pub fn create_session_pool(pool_size: u32, pool_type: PoolType) -> SessionPool {
     )
 }
 
-// Private functions and variables
-
-const IMAGE_MODEL_PATH: &str = "siglip2-base-patch16-512/image_embedder.onnx";
-const TEXT_MODEL_PATH: &str = "siglip2-base-patch16-512/text_embedder.onnx";
-const TOKENIZER_PATH: &str = "siglip2-base-patch16-512/tokenizer.json";
+pub fn create_tokenizer(tokenizer_path: &Utf8Path) -> Tokenizer {
+    let base_dir = get_base_resource_dir();
+    Tokenizer::from_file(base_dir.join(tokenizer_path)).expect("Error loading tokenizer from file")
+}
 
 /// Static variable for the base resource (model + tokenizer files) directory
 /// Defaults to "models" if not explicitly set
@@ -83,7 +61,7 @@ pub fn init_model_resource_directory(path: &Utf8Path) {
 }
 
 /// Get the base resource directory, defaulting to "models"
-fn get_base_resource_dir() -> Utf8PathBuf {
+pub fn get_base_resource_dir() -> Utf8PathBuf {
     BASE_RESOURCE_DIRECTORY
         .get_or_init(|| Utf8PathBuf::from("models"))
         .clone()

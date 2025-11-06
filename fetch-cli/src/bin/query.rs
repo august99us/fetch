@@ -1,7 +1,8 @@
-use std::{error::Error, future::Future, pin::Pin};
+use std::{collections::HashMap, error::Error};
 
+use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch_core::{app_config, init_ort, init_querying, file_index::{query_files::{FileQuerying, QueryFiles}, FileIndexer}, vector_store::lancedb_store::LanceDBStore};
+use fetch_core::{app_config, init_ort, file_index::{query_files::{QueryFiles, QueryResult}, FileQueryer, pagination::QueryCursor}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]
@@ -14,12 +15,12 @@ struct Args {
     verbose: bool,
     /// String to query files with
     query: String,
-    /// Page number for results (1-based), default 1
-    #[arg(short, long)]
-    page: Option<u32>,
-    /// The number of query results to return per page, default 20
-    #[arg(short, long)]
-    num_results: Option<u32>,
+    /// The number of file results to return, default 20
+    #[arg(short = 'n', long, default_value_t = 20)]
+    num_results: u32,
+    /// The number of chunks to query per API call (higher = faster but more memory), default 100
+    #[arg(short = 'c', long, default_value_t = 100)]
+    chunks_per_query: u32,
 }
 
 #[tokio::main]
@@ -27,33 +28,100 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     init_ort(None)?;
-    init_querying(None);
+    env_logger::init();
 
     let data_dir = app_config::get_default_index_directory();
-    let lancedbstore = LanceDBStore::new(data_dir.as_str(), 768).await
-        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
-    let file_indexer = FileIndexer::with(lancedbstore);
+
+    // Create the image index store
+    let siglip_store = LanceDBStore::local_full(
+        data_dir.as_str(),
+        "siglip2_chunkfile".to_owned()
+    ).await
+    .unwrap_or_else(|e| panic!("Could not open lancedb store for image index with data dir: {}. Error: {e:?}", data_dir.as_str()));
+
+    // Create the cursor store
+    let cursor_store = LanceDBStore::<QueryCursor>::local(
+        data_dir.as_str(),
+        "cursor".to_owned()
+    ).await
+    .unwrap_or_else(|e| panic!("Could not open lancedb store for cursors with data dir: {}. Error: {e:?}", data_dir.as_str()));
+
+    // Create index provider and file queryer
+    let basic_image = BasicImageIndexProvider::using(siglip_store);
+    let file_queryer = FileQueryer::with(vec![std::sync::Arc::new(basic_image)], cursor_store);
 
     println!("Querying file index at {} with query: \"{}\"", data_dir.as_str(), args.query);
 
-    let result_future: Pin<Box<dyn Future<Output = Result<FileQuerying::Result, FileQuerying::Error>>>>;
-    if let Some(n) = args.num_results {
-        result_future = Box::pin(file_indexer.query_n(&args.query, n, args.page.unwrap_or(1)));
-    } else {
-        result_future = Box::pin(file_indexer.query(&args.query, args.page));
-    }
+    // Aggregate results using cursor-based pagination
+    let final_results = aggregate_results(&file_queryer, &args.query, args.num_results, args.chunks_per_query, args.verbose).await?;
 
-    let results = result_future.await
-        .unwrap_or_else(|e| panic!("Issue querying file index: {e:?}"));
-
-    if results.is_empty() {
+    if final_results.is_empty() {
         println!("No results!");
     } else {
-        println!("Results ({}):", results.len());
-        for (i, result) in results.iter().enumerate() {
-            println!("{}: {}, {}", i + 1, result.path, result.similarity);
-        }
+        println!("\nResults ({}):", final_results.len());
+        for (i, result) in final_results.iter().enumerate() {
+            println!("{}: {} (score: {:.2})", i + 1, result.path, result.score);
+            }
     }
 
     Ok(())
+}
+
+/// Aggregates results by repeatedly calling the query API with cursor until we have enough results
+/// or there are no more results available
+async fn aggregate_results(
+    queryer: &impl QueryFiles,
+    query: &str,
+    target_num_results: u32,
+    chunks_per_query: u32,
+    verbose: bool,
+) -> Result<Vec<QueryResult>, Box<dyn Error>> {
+    let mut cursor_id: Option<String> = None;
+    let mut aggregated_results: HashMap<Utf8PathBuf, QueryResult> = HashMap::new();
+    let mut iteration = 0;
+
+    loop {
+        iteration += 1;
+        if verbose {
+            println!("Query iteration {}, cursor: {:?}", iteration, cursor_id);
+        }
+
+        let result = queryer.query_n(query, chunks_per_query, cursor_id.as_deref()).await?;
+
+        if verbose {
+            println!("  Received {} changed results, total list length: {}",
+                result.changed_results.len(), result.results_len);
+        }
+
+        // Update our aggregated results with the changed results
+        for changed in result.changed_results {
+            aggregated_results.insert(changed.path.clone(), changed);
+        }
+
+        // Check if we have enough results or if there's no more data
+        if result.cursor_id.is_none() {
+            if verbose {
+                println!("No more results available (cursor exhausted)");
+            }
+            break;
+        }
+
+        if aggregated_results.len() >= target_num_results as usize {
+            if verbose {
+                println!("Target number of results ({}) reached", target_num_results);
+            }
+            break;
+        }
+
+        cursor_id = result.cursor_id;
+    }
+
+    // Convert to vec and sort by rank
+    let mut final_results: Vec<QueryResult> = aggregated_results.into_values().collect();
+    final_results.sort_by_key(|r| r.rank);
+
+    // Truncate to target number of results
+    final_results.truncate(target_num_results as usize);
+
+    Ok(final_results)
 }

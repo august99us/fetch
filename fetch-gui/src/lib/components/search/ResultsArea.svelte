@@ -1,5 +1,6 @@
 <script lang="ts">
   import FileTile from './FileTile.svelte';
+  import SpinnerBar from '../common/SpinnerBar.svelte';
   const TILE_WIDTH = 20; // rem
   const TILE_HEIGHT = 15; // rem
 
@@ -10,7 +11,7 @@
 
   interface Props {
     results: FileResult[];
-    disabled?: boolean;
+    loading?: boolean;
     selectedIndex?: number;
     onselect?: (index: number) => void;
     onopen?: (index: number, path: string) => void;
@@ -18,7 +19,7 @@
 
   let {
     results,
-    disabled = false,
+    loading = false,
     selectedIndex = $bindable(-1),
     onselect,
     onopen
@@ -83,7 +84,7 @@
 </script>
 
 <div class="results-area">
-  <div class="results-grid" class:disabled style="--tile-width: {TILE_WIDTH}rem;" bind:this={gridContainer}>
+  <div class="results-grid" class:disabled={(results.length == 0) && loading} style="--tile-width: {TILE_WIDTH}rem;" bind:this={gridContainer}>
     {#each results as result, index}
       <FileTile
         file={result}
@@ -95,6 +96,9 @@
       />
     {/each}
   </div>
+  {#if loading}
+    <SpinnerBar />
+  {/if}
 </div>
 
 <style>

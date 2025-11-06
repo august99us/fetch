@@ -2,7 +2,7 @@ use std::error::Error;
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch_core::vector_store::lancedb_store::LanceDBStore;
+use fetch_core::store::lancedb::drop;
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-drop")]
@@ -16,15 +16,18 @@ struct Args {
     // Directory where index is stored
     #[arg(long)]
     data_directory: Utf8PathBuf,
+    // Name of table to drop
+    #[arg(long)]
+    table_name: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    LanceDBStore::drop(args.data_directory.as_str()).await?;
+    drop(args.data_directory.as_str(), args.table_name.as_str()).await?;
 
-    println!("Completed clearing and regenerating lancedb database at {}", &args.data_directory);
+    println!("Completed dropping lancedb table at {}, {}", &args.data_directory, &args.table_name);
 
     Ok(())
 }

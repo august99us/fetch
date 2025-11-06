@@ -3,7 +3,7 @@ use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, 
 use camino::Utf8PathBuf;
 use clap::Parser;
 use fetch_cli::utility::print_metrics;
-use fetch_core::{app_config, init_ort, init_indexing, file_index::{index_files::{FileIndexing, IndexFiles}, FileIndexer}, vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys}};
+use fetch_core::{app_config, init_ort, file_index::{index_files::{IndexFiles, FileIndexingResult, FileIndexingResultType}, FileIndexer}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{runtime, sync::Semaphore, task};
@@ -35,7 +35,7 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn Error>> {
     init_ort(None)?;
-    init_indexing(None);
+    env_logger::init();
 
     let args = Args::parse();
     let start_time = std::time::Instant::now();
@@ -100,9 +100,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let data_dir = app_config::get_default_index_directory();
-        let lancedbstore = LanceDBStore::new(data_dir.as_str(), 768).await?;
-        // TODO: unwrap error handling
-        let file_indexer: Arc<FileIndexer<LanceDBStore>> = Arc::new(FileIndexer::with(lancedbstore));
+        let siglip_store = LanceDBStore::local_full(
+            data_dir.as_str(),
+            "siglip2_chunkfile".to_owned()
+        ).await
+        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
+        let basic_image = BasicImageIndexProvider::using(siglip_store);
+        let file_indexer: Arc<FileIndexer> = Arc::new(FileIndexer::with(vec![Arc::new(basic_image)]));
 
         println!("Indexing {} files into index stored in the directory {} with {} parallel jobs",
             files.len(),
@@ -150,7 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Total indexing duration: {:.2?}", elapsed);
         println!("Press Enter to quit...");
         let mut empty = String::new();
-        std::io::stdin().read_line(&mut empty);
+        let _ = std::io::stdin().read_line(&mut empty);
     }
 
     Ok(result?)
@@ -237,7 +241,7 @@ fn explore_directories(folders: Vec<PathBuf>, files: &mut Vec<PathBuf>, recursiv
     }
 }
 
-async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + Clone + 'static>>, 
+async fn spawn_index_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clone + 'static>,
     files: Vec<Utf8PathBuf>, jobs: usize) -> Vec<Result<(), ()>> {
     let semaphore = Arc::new(Semaphore::new(jobs));
     let mut handles = vec![];
@@ -257,11 +261,11 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
             drop(permit); // Release the permit when done
             bar_clone.inc(1);
             match result {
-                Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Indexed }) => {
+                Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Indexed }) => {
                     bar_clone.println(format!("File {path} successfully indexed"));
                     Ok(())
                 },
-                Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared  }) => {
+                Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => {
                     bar_clone.println(format!("File {path} not found or could not be previewed, successfully cleared from index"));
                     Ok(())
                 },
@@ -284,7 +288,7 @@ async fn spawn_index_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
     results
 }
 
-async fn spawn_clear_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + QueryVectorKeys + Sync + Send + Clone + 'static>>, 
+async fn spawn_clear_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clone + 'static>,
     files: Vec<Utf8PathBuf>, jobs: usize) -> Vec<Result<(), ()>> {
     let semaphore = Arc::new(Semaphore::new(jobs));
     let mut handles = vec![];
@@ -304,10 +308,10 @@ async fn spawn_clear_jobs(file_indexer: Arc<FileIndexer<impl IndexVector + Query
             drop(permit); // Release the permit when done
             bar_clone.inc(1);
             match result {
-                Ok(FileIndexing::Result { path: _, r#type: FileIndexing::ResultType::Indexed }) => {
+                Ok(FileIndexingResult { path: _, r#type: FileIndexingResultType::Indexed }) => {
                     unreachable!("Clear will never return an Indexed result");
                 },
-                Ok(FileIndexing::Result { path, r#type: FileIndexing::ResultType::Cleared  }) => {
+                Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => {
                     bar_clone.println(format!("Path {path} successfully cleared from index"));
                     Ok(())
                 },

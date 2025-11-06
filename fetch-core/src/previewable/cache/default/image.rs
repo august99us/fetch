@@ -5,7 +5,7 @@ use tokio::{fs::File, io::AsyncReadExt, task};
 
 pub const PREVIEW_EXTENSION: &str = "webp";
 
-const PREVIEW_MAX_SIDE: u32 = 400;
+const PREVIEW_MAX_SIDE: u32 = 300;
 
 /// Returns a vector of bytes representing the preview image
 pub async fn calculate_preview(mut file: File) -> Result<Vec<u8>, anyhow::Error> {

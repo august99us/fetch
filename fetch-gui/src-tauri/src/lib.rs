@@ -12,6 +12,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            env_logger::init();
+
             // Get the resource directory where models are bundled
             let resource_dir = Utf8PathBuf::try_from(
                 app.path()
@@ -29,10 +31,11 @@ pub fn run() {
 
             // Set the resource directory with the first init call
             println!("Warming up indexing model...");
-            init_indexing(Some(&models_dir));
+            // TODO: update once warming models api is finalized
+            init_indexing(Some(&models_dir), vec![]);
             // Second call doesn't need to set it again since fetch-core defines this as static setup
             println!("Warming up querying model...");
-            init_querying(None);
+            init_querying(None, vec![]);
 
             // Initialize system tray functionality
             println!("Building tray...");
@@ -41,6 +44,9 @@ pub fn run() {
             // Register global shortcuts
             println!("Registering global shortcuts...");
             register_shortcuts(app.handle())?;
+
+            // Uncomment to test quick window
+            //summon_quick_window(app.handle())?;
 
             Ok(())
         })

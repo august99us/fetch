@@ -31,6 +31,34 @@ pub fn get_default_index_directory() -> Utf8PathBuf {
     folder
 }
 
+/// Gets the default directory path for storing file chunks.
+/// 
+/// This function reads from the data configuration file and replaces the `%%AppDataDirectory%%`
+/// placeholder with the actual application data directory path. The directory will be created
+/// if it doesn't already exist.
+/// 
+/// # Returns
+/// 
+/// A [`Utf8PathBuf`] representing the path to the default chunk directory.
+/// 
+/// # Panics
+/// 
+/// Panics if the data configuration cannot be loaded, the default_chunk_directory setting
+/// is missing, or if there are filesystem errors creating the directory.
+pub fn get_default_chunk_directory() -> Utf8PathBuf {
+    let data_config = get_data_config().expect("Failed to load data config");
+
+    let folder = Utf8PathBuf::from(data_config.get_string("default_chunk_directory")
+        .expect("Failed to get default chunk directory from data config")
+        .replace("%%AppDataDirectory%%", get_app_folder().as_str()));
+    // create if doesn't exist
+    if !fs::exists(&folder).expect("Error while determining if chunk directory exists") {
+            fs::create_dir_all(&folder).expect("Failed to create default chunk directory");
+    }
+
+    folder
+}
+
 /// Gets the default directory path for storing file previews.
 /// 
 /// This function reads from the data configuration file and replaces the `%%AppDataDirectory%%`

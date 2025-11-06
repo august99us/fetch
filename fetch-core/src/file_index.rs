@@ -1,10 +1,10 @@
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
-use crate::vector_store::{lancedb_store::LanceDBStore, IndexVector, QueryVectorKeys};
+use crate::{file_index::pagination::QueryCursor, index::{ChunkingIndexProvider, basic_image_index_provider::BasicImageIndexProvider}, store::{ClearByFilter, KeyedSequencedStore, lancedb::LanceDBStore}};
 
 /// Errors that can occur related to the file indexer object itself.
 #[derive(thiserror::Error, Debug)]
-pub enum FileIndexerError {
+pub enum FileIndexError {
     /// A dependency failed during construction or initialization.
     /// 
     /// This error occurs when a required dependency (such as the vector store)
@@ -13,60 +13,73 @@ pub enum FileIndexerError {
     DependencyError { dependency: &'static str, #[source] source: Box<dyn Error> },
 }
 
-/// A file indexer that manages the indexing and querying of files semantically, 
-/// by utilizing an embedding model and a vector store.
-/// 
-/// The `FileIndexer` is a generic struct that works with any vector store implementation
-/// that supports both indexing vectors and querying for similar vectors by keys.
-/// 
-/// # Example
-/// 
-/// ```rust
-/// use fetch_core::file_index::{FileIndexer, index_files::IndexFiles, query_files::QueryFiles};
-/// use fetch_core::vector_store::lancedb_store::LanceDBStore;
-/// use camino::Utf8Path;
-/// 
-/// async fn example() -> Result<(), Box<dyn std::error::Error>> {
-///     // Create a new vector store and file indexer
-///     let store = LanceDBStore::new("./data_dir", 768).await?;
-///     let indexer = FileIndexer::with(store);
-/// 
-///     // Index a file
-///     let path = Utf8Path::new("/path/to/image.jpg");
-///     let result = indexer.index(path).await?;
-/// 
-///     // Query for semantically similar files
-///     let results = indexer.query("a photo of a dog", None).await?;
-///     let specific_results = indexer.query_n("sunset landscape", 10, 1).await?;
-///     Ok(())
-/// }
-/// ```
 #[derive(Clone)]
-pub struct FileIndexer<I: IndexVector + QueryVectorKeys> {
-    vector_store: I,
+pub struct FileIndexer
+{
+    index_providers: Vec<Arc<dyn ChunkingIndexProvider>>,
 }
-impl<I: IndexVector + QueryVectorKeys> FileIndexer<I> {
-    // Testing constructor
-    async fn new() -> Result<FileIndexer<LanceDBStore>, FileIndexerError> {
-        let lancedbstore = LanceDBStore::new("./data_dir", 512).await
-            .map_err(|e| FileIndexerError::DependencyError { dependency: "Lance Db Vector Store", 
-                source: Box::new(e) })?;
 
-        Ok(FileIndexer::with(lancedbstore))
+impl FileIndexer
+{
+    // Testing constructor
+    async fn new() -> Result<FileIndexer, FileIndexError> {
+        let basic_image = BasicImageIndexProvider::using(
+            LanceDBStore::local("./data_dir", "basic_image_index".to_owned()).await
+            .map_err(|e| FileIndexError::DependencyError {
+                dependency: "Lance Db Vector Store", 
+                source: Box::new(e)
+            })?,
+        );
+
+        Ok(FileIndexer::with(vec![Arc::new(basic_image)]))
     }
-    /// Creates a new `FileIndexer` with the provided vector store.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `vector_store` - A vector store implementation that supports both indexing and querying
-    /// 
-    /// # Returns
-    /// 
-    /// A new `FileIndexer` instance configured with the given vector store.
-    pub fn with(vector_store: I) -> FileIndexer<I> {
-        FileIndexer { vector_store }
+
+    pub fn with(providers: Vec<Arc<dyn ChunkingIndexProvider>>) -> FileIndexer {
+        FileIndexer { index_providers: providers }
+    }
+}
+
+#[derive(Clone)]
+pub struct FileQueryer<C>
+where
+    C: KeyedSequencedStore<String, QueryCursor> +
+        ClearByFilter<QueryCursor> +
+        Send + Sync
+{
+    index_providers: Vec<Arc<dyn ChunkingIndexProvider>>,
+    cursor_store: C,
+}
+
+impl<C> FileQueryer<C>
+where
+    C: KeyedSequencedStore<String, QueryCursor> +
+        ClearByFilter<QueryCursor> +
+        Send + Sync
+{
+    // Testing constructor
+    async fn new() -> Result<FileQueryer<LanceDBStore<QueryCursor>>, FileIndexError> {
+        let cursor_store = LanceDBStore::local("./data_dir", "cursor_index".to_owned()).await
+            .map_err(|e| FileIndexError::DependencyError {
+                dependency: "Lance Db Vector Store", 
+                source: Box::new(e)
+            })?;
+
+        let basic_image = BasicImageIndexProvider::using(
+            LanceDBStore::local("./data_dir", "basic_image_index".to_owned()).await
+            .map_err(|e| FileIndexError::DependencyError {
+                dependency: "Lance Db Vector Store", 
+                source: Box::new(e)
+            })?,
+        );
+
+        Ok(FileQueryer::with(vec![Arc::new(basic_image)], cursor_store))
+    }
+
+    pub fn with(providers: Vec<Arc<dyn ChunkingIndexProvider>>, cursor_store: C) -> FileQueryer<C> {
+        FileQueryer { index_providers: providers, cursor_store }
     }
 }
 
 pub mod index_files;
+pub mod pagination;
 pub mod query_files;

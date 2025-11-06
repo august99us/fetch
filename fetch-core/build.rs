@@ -15,7 +15,7 @@ fn main() {
         "august99us/siglip2-base-patch16-512-fetch", 
         &models_folder
     ) {
-        Ok(_) => println!("cargo:warning=Successfully loaded model files"),
+        Ok(_) => {},
         Err(e) => {
             println!("cargo:error=Failed to load model files: {}", e);
         }
@@ -34,7 +34,7 @@ struct HfModelInfo {
 
 fn download_hf_model(model_name: &str, repo_id: &str, out_folder: &Path) -> Result<(), Box<dyn Error>> {
     if !out_folder.exists() {
-        fs::create_dir_all(&out_folder)?;
+        fs::create_dir_all(out_folder)?;
     }
 
     // Create the destination directory

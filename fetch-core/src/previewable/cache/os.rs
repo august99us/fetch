@@ -13,7 +13,7 @@ pub fn has_generator_for_type(extension: &str) -> bool {
     os_generator.map(|gen| gen.has_generator_for_type(extension)).unwrap_or(false)
 }
 
-pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewError> {
+pub async fn generate_preview(_path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewError> {
     Ok(Some(Utf8PathBuf::new()))
 }
 
@@ -26,12 +26,12 @@ trait GeneratesPreview {
 
 struct WindowsPreviewGenerator;
 impl ImpliesGeneratingPreview for WindowsPreviewGenerator {
-    fn has_generator_for_type(&self, extension: &str) -> bool {
+    fn has_generator_for_type(&self, _extension: &str) -> bool {
         false
     }
 }
 impl GeneratesPreview for WindowsPreviewGenerator {
-    async fn generate_preview(&self, file: File) -> Result<Utf8PathBuf, anyhow::Error> {
+    async fn generate_preview(&self, _file: File) -> Result<Utf8PathBuf, anyhow::Error> {
         Ok(Utf8PathBuf::new())
     }
 }
