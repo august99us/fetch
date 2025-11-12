@@ -45,8 +45,106 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../fetch-core/bundle/": "",
-      "../bundle/": ""
+      "../../fetch-core/bundle/": ""
+    }
+  },
+  "plugins": {
+    "cli": {
+      "description": "Fetch",
+      "args": [],
+      "afterHelp": "Run without subcommands to run the gui application, or run with subcommands for CLI",
+      "subcommands": {
+        "drop": {
+          "description": "drops entire database table (development use)",
+          "args": [
+            {
+              "name": "data_directory",
+              "description": "Directory where the index is stored",
+              "takesValue": true,
+              "required": true
+            },
+            {
+              "name": "table_name",
+              "description": "Name of table to drop",
+              "takesValue": true,
+              "required": true
+            }
+          ]
+        },
+        "index": {
+          "description": "indexes things semantically",
+          "args": [
+            {
+              "name": "jobs",
+              "short": "j",
+              "description": "Number of parallel indexing jobs to run at once",
+              "takesValue": true
+            },
+            {
+              "name": "recursive",
+              "short": "r",
+              "description": "Recursively look through sub folders to find files to index"
+            },
+            {
+              "name": "force",
+              "short": "f",
+              "description": "Do not confirm before indexing"
+            },
+            {
+              "name": "metrics",
+              "short": "m",
+              "description": "Track and print metrics"
+            },
+            {
+              "name": "paths",
+              "index": 1,
+              "takesValue": true,
+              "multiple": true,
+              "description": "File or folder paths to index"
+            }
+          ]
+        },
+        "query": {
+          "description": "queries semantic file index with a query string",
+          "args": [
+            {
+              "name": "query",
+              "index": 1,
+              "takesValue": true,
+              "description": "String to query files with"
+            },
+            {
+              "name": "num_results",
+              "short": "n",
+              "takesValue": true,
+              "description": "The number of file results to return"
+            },
+            {
+              "name": "chunks_per_query",
+              "short": "c",
+              "takesValue": true,
+              "description": "The number of chunks to query per API call (higher = faster but more memory)"
+            }
+          ]
+        },
+        "query-by-file": {
+          "description": "queries semantic file index with a query file",
+          "args": [
+            {
+              "name": "query",
+              "index": 1,
+              "takesValue": true,
+              "description": "Path to query file"
+            },
+            {
+              "name": "num_results",
+              "short": "n",
+              "takesValue": true,
+              "description": "The number of file results to return"
+            }
+          ]
+        }
+      }
     }
   }
 }

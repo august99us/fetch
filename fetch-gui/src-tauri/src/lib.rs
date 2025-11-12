@@ -1,18 +1,28 @@
 use std::error::Error;
 
 use camino::Utf8PathBuf;
-use fetch_core::{init_indexing, init_ort, init_pdfium, init_querying};
+use fetch_core::{init_resources, init_indexing, init_querying};
 use tauri::{
-    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem}, tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent}, App, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent
+    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    App, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
+
+use crate::utility::init_logger;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .setup(|app| {
-            env_logger::init();
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        builder = builder.plugin(tauri_plugin_cli::init());
+        builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    }
+
+    builder.setup(|app| {
+            init_logger();
 
             // Get the resource directory where models are bundled
             let resource_dir = Utf8PathBuf::try_from(
@@ -22,24 +32,19 @@ pub fn run() {
             )
             .expect("Resource directory path is not valid UTF-8");
 
-            // Initialize pdfium
-            println!("Initializing PDFium...");
-            init_pdfium(Some(&resource_dir)).expect("Failed initializing pdfium");
+            init_resources(Some(&resource_dir))
+                .unwrap_or_else(|e| panic!("Error while initializing resources: {:?}", e));
 
-            // Initialize ort first
-            println!("Initializing Onnx Runtime...");
-            init_ort(Some(&resource_dir)).expect("Failed initializing ort");
-
-            // Convert to Utf8PathBuf and set as the base model directory
-            let models_dir = resource_dir.join("models");
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cli::intercept_cli_command(app.handle());
 
             // Set the resource directory with the first init call
             println!("Warming up indexing model...");
             // TODO: update once warming models api is finalized
-            init_indexing(Some(&models_dir), vec![]);
+            init_indexing(vec![]);
             // Second call doesn't need to set it again since fetch-core defines this as static setup
             println!("Warming up querying model...");
-            init_querying(None, vec![]);
+            init_querying(vec![]);
 
             // Initialize system tray functionality
             println!("Building tray...");
@@ -158,16 +163,19 @@ fn build_tray(app: &mut App) -> Result<TrayIcon, Box<dyn Error>> {
 
 // Private functions
 fn register_shortcuts(app: &AppHandle) -> Result<(), Box<dyn Error>> {
-    #[cfg(desktop)]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+        use tauri_plugin_global_shortcut::{
+            Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+        };
 
         let fetch_shortcut = Shortcut::new(
             Some(Modifiers::CONTROL.union(Modifiers::SHIFT)),
             Code::Space,
         );
 
-        app.global_shortcut().on_shortcut(fetch_shortcut, 
+        app.global_shortcut().on_shortcut(
+            fetch_shortcut,
             move |closure_app, shortcut, event| {
                 // closure_app comes from the caller of the closure, so is not transient like the
                 // reference in the register_shortcuts function.
@@ -177,11 +185,12 @@ fn register_shortcuts(app: &AppHandle) -> Result<(), Box<dyn Error>> {
                             println!("Fetching!");
                             summon_quick_window(closure_app)
                                 .expect("Unable to summon fetch window");
-                        },
-                        ShortcutState::Released => {},
+                        }
+                        ShortcutState::Released => {}
                     }
                 }
-            })?;
+            },
+        )?;
     }
 
     Ok(())
@@ -194,16 +203,14 @@ fn summon_full_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>> 
         window.set_focus()?;
         Ok(window)
     } else {
-        Ok(WebviewWindowBuilder::new(
-            app,
-            "full",
-            WebviewUrl::App("/search".into())
+        Ok(
+            WebviewWindowBuilder::new(app, "full", WebviewUrl::App("/search".into()))
+                .resizable(true)
+                .center()
+                .focusable(true)
+                .focused(true)
+                .build()?,
         )
-        .resizable(true)
-        .center()
-        .focusable(true)
-        .focused(true)
-        .build()?)
     }
 }
 
@@ -215,18 +222,14 @@ fn summon_quick_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>>
         window.set_focus()?;
         Ok(window)
     } else {
-        let mut builder = WebviewWindowBuilder::new(
-            app,
-            "quick",
-            WebviewUrl::App("/".into())
-        )
-        .inner_size(800.0, 69.0)
-        .decorations(false)
-        .always_on_top(true)
-        .resizable(false)
-        .center()
-        .focusable(true)
-        .focused(true);
+        let mut builder = WebviewWindowBuilder::new(app, "quick", WebviewUrl::App("/".into()))
+            .inner_size(800.0, 69.0)
+            .decorations(false)
+            .always_on_top(true)
+            .resizable(false)
+            .center()
+            .focusable(true)
+            .focused(true);
 
         #[cfg(not(target_os = "macos"))]
         {
@@ -243,5 +246,8 @@ fn summon_quick_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>>
     }
 }
 
-pub mod commands;
-pub mod utility;
+mod commands;
+mod utility;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod cli;

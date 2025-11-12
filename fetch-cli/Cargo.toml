@@ -4,22 +4,6 @@ version = "0.0.2"
 edition = "2021"
 
 [[bin]]
-name = "fetch-index"
-path = "src/bin/index.rs"
-
-[[bin]]
-name = "fetch-query"
-path = "src/bin/query.rs"
-
-[[bin]]
-name = "fetch-query-by-file"
-path = "src/bin/query_by_file.rs"
-
-[[bin]]
-name = "fetch-drop"
-path = "src/bin/drop.rs"
-
-[[bin]]
 name = "fetch-daemon"
 path = "src/bin/file_daemon.rs"
 
@@ -34,6 +18,7 @@ fetch-core = { path = "../fetch-core" }
 anyhow = { workspace = true }
 camino = { workspace = true }
 chrono = { workspace = true }
+log = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }

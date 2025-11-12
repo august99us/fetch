@@ -44,4 +44,6 @@ pub use error::*;
 
 pub mod image;
 pub mod error;
+
+#[cfg(feature = "pdf")]
 pub mod pdf;

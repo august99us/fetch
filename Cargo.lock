@@ -2981,6 +2981,7 @@ dependencies = [
  "fetch-core",
  "futures",
  "indicatif",
+ "log",
  "normalize-path",
  "notify",
  "notify-debouncer-full",
@@ -3031,11 +3032,13 @@ dependencies = [
  "camino",
  "chrono",
  "env_logger",
+ "fetch-cli",
  "fetch-core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-cli",
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tokio",
@@ -8812,6 +8815,21 @@ dependencies = [
  "tauri-utils",
  "toml 0.9.5",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-cli"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28e78fb2c09a81546bcd376d34db4bda5769270d00990daa9f0d6e7ac1107e25"
+dependencies = [
+ "clap",
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.16",
 ]
 
 [[package]]

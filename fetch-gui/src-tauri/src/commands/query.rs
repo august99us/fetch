@@ -28,24 +28,24 @@ pub async fn query(query: &str, cursor_id: Option<&str>) -> Result<FileQueryingR
     file_queryer
         .query_n(query, 100, cursor_id)
         .await
-        .map(|result| {
-            FileQueryingResult {
-                results_len: result.results_len,
-                changed_results: result.changed_results.into_iter()
-                    .map(|query_result| QueryResult {
-                        name: query_result
-                            .path
-                            .file_name()
-                            .expect("Result path should have a name")
-                            .to_string(),
-                        path: query_result.path.to_string(),
-                        old_rank: query_result.old_rank,
-                        rank: query_result.rank,
-                        score: query_result.score,
-                    })
-                    .collect(),
-                cursor_id: result.cursor_id,
-            }
+        .map(|result| FileQueryingResult {
+            results_len: result.results_len,
+            changed_results: result
+                .changed_results
+                .into_iter()
+                .map(|query_result| QueryResult {
+                    name: query_result
+                        .path
+                        .file_name()
+                        .expect("Result path should have a name")
+                        .to_string(),
+                    path: query_result.path.to_string(),
+                    old_rank: query_result.old_rank,
+                    rank: query_result.rank,
+                    score: query_result.score,
+                })
+                .collect(),
+            cursor_id: result.cursor_id,
         })
         .map_err(|e| format!("{}, source: {:?}", e, e.source()))
 }

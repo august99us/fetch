@@ -1,35 +1,18 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use camino::Utf8PathBuf;
-use clap::Parser;
-use fetch_core::{app_config, files::{FileQueryer, pagination::QueryCursor, query::{QueryFiles, QueryResult}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, init_ort, store::lancedb::LanceDBStore};
+use fetch_core::{app_config, files::{FileQueryer, pagination::QueryCursor, query::{QueryFiles, QueryResult}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, store::lancedb::LanceDBStore};
 
-#[derive(Parser, Debug)]
-#[command(name = "fetch-query")]
-#[command(author = "August Sun, august99us@gmail.com")]
-#[command(version = "0.0.2")]
-#[command(about = "queries semantic file index with a query string", long_about = None)]
-struct Args {
-    /// Verbose mode
-    #[arg(short, long)]
-    verbose: bool,
+pub struct QueryArgs {
     /// String to query files with
-    query: String,
+    pub query: String,
     /// The number of file results to return, default 20
-    #[arg(short = 'n', long, default_value_t = 20)]
-    num_results: u32,
+    pub num_results: u32,
     /// The number of chunks to query per API call (higher = faster but more memory), default 100
-    #[arg(short = 'c', long, default_value_t = 100)]
-    chunks_per_query: u32,
+    pub chunks_per_query: u32,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-
-    init_ort(None)?;
-    env_logger::init();
-
+pub async fn query(args: QueryArgs) -> Result<(), Box<dyn Error>> {
     let data_dir = app_config::get_default_index_directory();
 
     // Create the image index store
@@ -37,16 +20,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         data_dir.as_str(),
         "siglip2_chunkfile".to_owned()
     ).await
-    .unwrap_or_else(|e| 
+    .unwrap_or_else(|e|
         panic!("Could not open lancedb store for image index with data dir: {}. Error: {e:?}",
         data_dir.as_str())));
-    
+
     // Create the pdf index store
     let gemma_store = Arc::new(LanceDBStore::local_full(
         data_dir.as_str(),
         "gemma_chunkfile".to_owned()
     ).await
-    .unwrap_or_else(|e| 
+    .unwrap_or_else(|e|
         panic!("Could not open lancedb store for pdf index with data dir: {}. Error: {e:?}",
         data_dir.as_str())));
 
@@ -67,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Querying file index at {} with query: \"{}\"", data_dir.as_str(), args.query);
 
     // Aggregate results using cursor-based pagination
-    let final_results = aggregate_results(&file_queryer, &args.query, args.num_results, args.chunks_per_query, args.verbose).await?;
+    let final_results = aggregate_results(&file_queryer, &args.query, args.num_results, args.chunks_per_query).await?;
 
     if final_results.is_empty() {
         println!("No results!");
@@ -88,7 +71,6 @@ async fn aggregate_results(
     query: &str,
     target_num_results: u32,
     chunks_per_query: u32,
-    verbose: bool,
 ) -> Result<Vec<QueryResult>, Box<dyn Error>> {
     let mut cursor_id: Option<String> = None;
     let mut aggregated_results: HashMap<Utf8PathBuf, QueryResult> = HashMap::new();
@@ -96,16 +78,12 @@ async fn aggregate_results(
 
     loop {
         iteration += 1;
-        if verbose {
-            println!("Query iteration {}, cursor: {:?}", iteration, cursor_id);
-        }
+        log::debug!("Query iteration {}, cursor: {:?}", iteration, cursor_id);
 
         let result = queryer.query_n(query, chunks_per_query, cursor_id.as_deref()).await?;
 
-        if verbose {
-            println!("  Received {} changed results, total list length: {}",
-                result.changed_results.len(), result.results_len);
-        }
+        log::debug!("  Received {} changed results, total list length: {}",
+            result.changed_results.len(), result.results_len);
 
         // Update our aggregated results with the changed results
         for changed in result.changed_results {
@@ -114,16 +92,12 @@ async fn aggregate_results(
 
         // Check if we have enough results or if there's no more data
         if result.cursor_id.is_none() {
-            if verbose {
-                println!("No more results available (cursor exhausted)");
-            }
+            log::debug!("No more results available (cursor exhausted)");
             break;
         }
 
         if aggregated_results.len() >= target_num_results as usize {
-            if verbose {
-                println!("Target number of results ({}) reached", target_num_results);
-            }
+            log::debug!("Target number of results ({}) reached", target_num_results);
             break;
         }
 

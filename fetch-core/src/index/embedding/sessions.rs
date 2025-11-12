@@ -54,14 +54,14 @@ static BASE_RESOURCE_DIRECTORY: OnceLock<Utf8PathBuf> = OnceLock::new();
 
 /// Set the base resource directory. If the base resource directory has already been
 /// set or a model has already been loaded, this will be ignored.
-pub fn init_model_resource_directory(path: &Utf8Path) {
+pub(crate) fn init_model_resource_directory(path: &Utf8Path) {
     BASE_RESOURCE_DIRECTORY.set(path.to_path_buf()).unwrap_or_else(|_| {
         warn!("Attempting to change previously resolved base model resource directory, ignoring");
     });
 }
 
 /// Get the base resource directory, defaulting to "models"
-pub fn get_base_resource_dir() -> Utf8PathBuf {
+pub(crate) fn get_base_resource_dir() -> Utf8PathBuf {
     BASE_RESOURCE_DIRECTORY
         .get_or_init(|| Utf8PathBuf::from("models"))
         .clone()

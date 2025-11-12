@@ -21,7 +21,8 @@ fn main() {
         }
     }
 
-    match download_pdfium_dylib(&out_dir) {
+    #[cfg(feature = "pdf")]
+    match pdfium::download_pdfium_dylib(&out_dir) {
         Ok(_) => {},
         Err(e) => {
             println!("cargo:error=Failed to load PDFium files: {}", e);
@@ -56,136 +57,142 @@ struct VersionInfoJson {
     tag_name: String,
 }
 
-// List of pdfium library files we want to extract
-#[cfg(target_os = "windows")]
-const PDFIUM_LIB_PATTERNS: [&str; 1] = [
-    // windows patterns
-    "pdfium.dll",
-];
-#[cfg(target_os = "macos")]
-const PDFIUM_LIB_PATTERNS: [&str; 1] = [
-    // mac patterns
-    "libpdfium.dylib",
-];
-#[cfg(target_os = "linux")]
-const PDFIUM_LIB_PATTERNS: [&str; 1] = [
-    // linux patterns
-    "libpdfium.so",
-];
-fn download_pdfium_dylib(out_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    // x86_64, aarch64, etc.
-    let architecture = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+#[cfg(feature = "pdf")]
+mod pdfium {
+    use super::*;
 
-    // Check if pdfium libraries already exist
-    let lib_exists = match target_os.as_str() {
-        "windows" => out_dir.join("pdfium.dll").exists(),
-        "macos" => out_dir.join("libpdfium.dylib").exists(),
-        "linux" => out_dir.join("libpdfium.so").exists(),
-        _ => {
-            println!(
-                "cargo:warning=Unsupported OS: {}. Skipping pdfium prep.",
-                target_os
-            );
+    // List of pdfium library files we want to extract
+    #[cfg(target_os = "windows")]
+    pub const PDFIUM_LIB_PATTERNS: [&str; 1] = [
+        // windows patterns
+        "pdfium.dll",
+    ];
+    #[cfg(target_os = "macos")]
+    pub const PDFIUM_LIB_PATTERNS: [&str; 1] = [
+        // mac patterns
+        "libpdfium.dylib",
+    ];
+    #[cfg(target_os = "linux")]
+    pub const PDFIUM_LIB_PATTERNS: [&str; 1] = [
+        // linux patterns
+        "libpdfium.so",
+    ];
+
+    pub fn download_pdfium_dylib(out_dir: &Path) -> Result<(), Box<dyn Error>> {
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+        // x86_64, aarch64, etc.
+        let architecture = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+
+        // Check if pdfium libraries already exist
+        let lib_exists = match target_os.as_str() {
+            "windows" => out_dir.join("pdfium.dll").exists(),
+            "macos" => out_dir.join("libpdfium.dylib").exists(),
+            "linux" => out_dir.join("libpdfium.so").exists(),
+            _ => {
+                println!(
+                    "cargo:warning=Unsupported OS: {}. Skipping pdfium prep.",
+                    target_os
+                );
+                return Ok(());
+            }
+        };
+        if lib_exists {
+            println!("cargo:warning=Pdfium libraries already exist in bundle/, skipping download");
             return Ok(());
         }
-    };
-    if lib_exists {
-        println!("cargo:warning=Pdfium libraries already exist in bundle/, skipping download");
-        return Ok(());
-    }
 
-    // Skip download if ONNX_BUILD_PATH is set (user is providing their own ONNX Runtime)
-    println!("cargo:rerun-if-env-changed=PDFIUM_BUILD_PATH");
-    if let Ok(pdfium_build_path) = env::var("PDFIUM_BUILD_PATH") {
-        println!("cargo:warning=Using custom pdfium build from PDFIUM_BUILD_PATH");
-        if let Err(e) = copy_libs_to_path_recursive(
-            Path::new(&pdfium_build_path),
-            out_dir,
-            &PDFIUM_LIB_PATTERNS
-        ) {
-            println!("cargo:error=Failed to copy dylibs from PDFIUM_BUILD_PATH: {}", e);
-            return Err(e);
-        }
-        return Ok(());
-    }
-
-    // Resolve latest version
-    let client = reqwest_client()?;
-    println!("cargo:rerun-if-env-changed=PDFIUM_RELEASE_VERSION_DOWNLOAD");
-    // Should resolve to a string like "chromium/7520", no v prefix or anything
-    let pdfium_version = match env::var("PDFIUM_RELEASE_VERSION_DOWNLOAD") {
-        Ok(ver) => ver,
-        Err(_) => {
-            let response = client
-                .get("https://api.github.com/repos/bblanchon/pdfium-binaries/releases/latest")
-                .send()?;
-            if !response.status().is_success() {
-                return Err(format!(
-                    "Failed to contact github for pdfium release info: HTTP {}, Response: {}",
-                    response.status(),
-                    response.text().unwrap_or_default()
-                )
-                .into());
+        // Skip download if ONNX_BUILD_PATH is set (user is providing their own ONNX Runtime)
+        println!("cargo:rerun-if-env-changed=PDFIUM_BUILD_PATH");
+        if let Ok(pdfium_build_path) = env::var("PDFIUM_BUILD_PATH") {
+            println!("cargo:warning=Using custom pdfium build from PDFIUM_BUILD_PATH");
+            if let Err(e) = copy_libs_to_path_recursive(
+                Path::new(&pdfium_build_path),
+                out_dir,
+                &PDFIUM_LIB_PATTERNS
+            ) {
+                println!("cargo:error=Failed to copy dylibs from PDFIUM_BUILD_PATH: {}", e);
+                return Err(e);
             }
-            let tag = response.json::<VersionInfoJson>().unwrap().tag_name;
-            if tag.chars().next().expect("tag is empty") == 'v' {
-                tag[1..].to_owned()
-            } else {
-                tag
-            }
+            return Ok(());
         }
-    };
 
-    // Construct download URL based on version, platform and architecture
-    let filename = match (target_os.as_ref(), architecture.as_ref()) {
-        ("windows", "x86_64") => "pdfium-win-x64.tgz",
-        ("windows", "aarch64") => "pdfium-win-arm64.tgz",
-        ("macos", _) => "pdfium-mac-univ.tgz",
-        ("linux", "x86_64") => "pdfium-linux-x64.tgz",
-        ("linux", "aarch64") => "pdfium-linux-arm64.tgz",
-        _ => return Err(format!("Unsupported platform: {}", target_os).into()),
-    };
+        // Resolve latest version
+        let client = reqwest_client()?;
+        println!("cargo:rerun-if-env-changed=PDFIUM_RELEASE_VERSION_DOWNLOAD");
+        // Should resolve to a string like "chromium/7520", no v prefix or anything
+        let pdfium_version = match env::var("PDFIUM_RELEASE_VERSION_DOWNLOAD") {
+            Ok(ver) => ver,
+            Err(_) => {
+                let response = client
+                    .get("https://api.github.com/repos/bblanchon/pdfium-binaries/releases/latest")
+                    .send()?;
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "Failed to contact github for pdfium release info: HTTP {}, Response: {}",
+                        response.status(),
+                        response.text().unwrap_or_default()
+                    )
+                    .into());
+                }
+                let tag = response.json::<VersionInfoJson>().unwrap().tag_name;
+                if tag.chars().next().expect("tag is empty") == 'v' {
+                    tag[1..].to_owned()
+                } else {
+                    tag
+                }
+            }
+        };
 
-    let url = format!(
-        "https://github.com/bblanchon/pdfium-binaries/releases/download/{}/{}",
-        pdfium_version, filename
-    );
+        // Construct download URL based on version, platform and architecture
+        let filename = match (target_os.as_ref(), architecture.as_ref()) {
+            ("windows", "x86_64") => "pdfium-win-x64.tgz",
+            ("windows", "aarch64") => "pdfium-win-arm64.tgz",
+            ("macos", _) => "pdfium-mac-univ.tgz",
+            ("linux", "x86_64") => "pdfium-linux-x64.tgz",
+            ("linux", "aarch64") => "pdfium-linux-arm64.tgz",
+            _ => return Err(format!("Unsupported platform: {}", target_os).into()),
+        };
 
-    println!(
-        "cargo:warning=Downloading pdfium version {} for {}-{}...",
-        pdfium_version, target_os, architecture,
-    );
-    println!("cargo:warning=Downloading from: {}", url);
+        let url = format!(
+            "https://github.com/bblanchon/pdfium-binaries/releases/download/{}/{}",
+            pdfium_version, filename
+        );
 
-    // Download the file
-    let response = client.get(&url).send()?;
-    if !response.status().is_success() {
-        return Err(format!("Failed to download: HTTP {}", response.status()).into());
+        println!(
+            "cargo:warning=Downloading pdfium version {} for {}-{}...",
+            pdfium_version, target_os, architecture,
+        );
+        println!("cargo:warning=Downloading from: {}", url);
+
+        // Download the file
+        let response = client.get(&url).send()?;
+        if !response.status().is_success() {
+            return Err(format!("Failed to download: HTTP {}", response.status()).into());
+        }
+
+        let bytes = response.bytes()?;
+
+        // Create a temporary file for the archive
+        #[allow(clippy::needless_borrows_for_generic_args)] // filename is used later
+        let temp_archive = PathBuf::from(env::var("OUT_DIR")?).join(&filename);
+        let mut file = File::create(&temp_archive)?;
+        file.write_all(&bytes)?;
+        drop(file);
+
+        println!("cargo:warning=Downloaded {} MB", bytes.len() / 1_000_000);
+        println!("cargo:warning=Extracting libraries to bundle/...");
+
+        if filename.ends_with(".zip") {
+            extract_from_zip(&temp_archive, out_dir, &PDFIUM_LIB_PATTERNS)?;
+        } else if filename.ends_with(".tgz") {
+            extract_from_tar_gz(&temp_archive, out_dir, &PDFIUM_LIB_PATTERNS)?;
+        }
+
+        // Clean up temp file
+        fs::remove_file(temp_archive)?;
+
+        Ok(())
     }
-
-    let bytes = response.bytes()?;
-
-    // Create a temporary file for the archive
-    #[allow(clippy::needless_borrows_for_generic_args)] // filename is used later
-    let temp_archive = PathBuf::from(env::var("OUT_DIR")?).join(&filename);
-    let mut file = File::create(&temp_archive)?;
-    file.write_all(&bytes)?;
-    drop(file);
-
-    println!("cargo:warning=Downloaded {} MB", bytes.len() / 1_000_000);
-    println!("cargo:warning=Extracting libraries to bundle/...");
-
-    if filename.ends_with(".zip") {
-        extract_from_zip(&temp_archive, out_dir, &PDFIUM_LIB_PATTERNS)?;
-    } else if filename.ends_with(".tgz") {
-        extract_from_tar_gz(&temp_archive, out_dir, &PDFIUM_LIB_PATTERNS)?;
-    }
-
-    // Clean up temp file
-    fs::remove_file(temp_archive)?;
-
-    Ok(())
 }
 
 #[derive(Deserialize, Debug)]

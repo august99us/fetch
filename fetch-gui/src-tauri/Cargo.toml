@@ -23,6 +23,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 fetch-core = { path = "../../fetch-core" }
+fetch-cli = { path = "../../fetch-cli" }
 
 camino = { workspace = true }
 chrono = { workspace = true }
@@ -35,4 +36,5 @@ tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-dialog = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-cli = "2"
 tauri-plugin-global-shortcut = "2"

@@ -2,176 +2,129 @@ use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, 
 
 use camino::Utf8PathBuf;
 use chrono::Utc;
-use clap::Parser;
-use fetch_cli::utility::print_metrics;
-use fetch_core::{app_config, files::{FileIndexer, index::{FileIndexingErrorType, FileIndexingResult, FileIndexingResultType, IndexFiles}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, init_ort, store::lancedb::LanceDBStore};
+use fetch_core::{app_config, files::{FileIndexer, index::{FileIndexingErrorType, FileIndexingResult, FileIndexingResultType, IndexFiles}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, store::lancedb::LanceDBStore};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
-use tokio::{runtime, sync::Semaphore, task};
+use tokio::{sync::Semaphore, task};
 
-#[derive(Parser, Debug)]
-#[command(name = "fetch-index")]
-#[command(author = "August Sun, august99us@gmail.com")]
-#[command(version = "0.0.2")]
-#[command(about = "indexes things semantically", long_about = None)]
-struct Args {
-    /// Verbose mode
-    #[arg(short, long)]
-    verbose: bool,
+pub struct IndexArgs {
     /// Number of parallel indexing jobs to run at once
-    #[arg(short, long, default_value_t = 4)]
-    jobs: usize,
+    pub jobs: usize,
     /// Recursively look through sub folders to find files to index
-    #[arg(short, long)]
-    recursive: bool,
+    pub recursive: bool,
     /// Do not confirm before indexing
-    #[arg(short, long)]
-    force: bool,
-    /// Track and print metrics
-    #[arg(short, long)]
-    metrics: bool,
+    pub force: bool,
     /// File or folder paths to index
-    paths: Vec<PathBuf>,
+    pub paths: Vec<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    init_ort(None)?;
-    env_logger::init();
+pub async fn index(args: IndexArgs) -> Result<(), Box<dyn Error>> {
+    let classified_paths = classify_paths(args.paths);
+    let mut files = classified_paths.files;
 
-    let args = Args::parse();
-    let start_time = std::time::Instant::now();
+    explore_directories(classified_paths.folders, &mut files, args.recursive);
 
-    let rt = runtime::Builder::new_multi_thread()
-        // Worker threads do not necessarily determine how many blocking tasks can be spawned.
-        // Blocking tasks in tokio include stuff like io tasks. Limiting the number of blocking tasks
-        // will also limit those io tasks in the same pool as the actual cpu blocking tasks Previewable
-        // and Embeddable need, which run for much longer. It would be better to run those in rayon
-        // or just run a maximum of 4 indexing jobs at once, using a semaphore.
-        // .worker_threads(args.jobs)
-        .enable_all()
-        .build()
-        .expect("Failed to create runtime");
+    let files = clean_paths(files);
+    // files classified as unknown are likely paths that were deleted and need to be cleared
+    let unknown = clean_paths(classified_paths.unknown);
 
-    let result = rt.block_on(async move {
-        let classified_paths = classify_paths(args.paths);
-        let mut files = classified_paths.files;
+    if files.is_empty() && unknown.is_empty() {
+        println!("Nothing to do! Goodbye.");
+        return Ok(());
+    }
 
-        explore_directories(classified_paths.folders, &mut files, args.recursive);
-
-        let files = clean_paths(files);
-        // files classified as unknown are likely paths that were deleted and need to be cleared
-        let unknown = clean_paths(classified_paths.unknown);
-
-        if files.is_empty() && unknown.is_empty() {
-            println!("Nothing to do! Goodbye.");
-            return Ok(());
-        }
-
-        if !args.force {
-            loop {
-                println!("{} file(s) discovered.\n\
-                    {} queued for indexing.\n\
-                    {} queued for clearing.\n\
-                    Confirm? (Y/N)",
-                    files.len() + unknown.len(),
-                    files.len(),
-                    unknown.len());
-                let mut confirmation = String::new();
-                std::io::stdin().read_line(&mut confirmation).expect("Failed to read line");
-                
-                // Trim the confirmation to remove any extra whitespace or newline characters
-                let confirmation = confirmation.trim();
-                match confirmation {
-                    "Y" | "y" | "yes" | "Yes" => break,
-                    "N" | "n" | "no" | "No" => {
-                        println!("Aborting...");
-                        return Ok(());
-                    },
-                    _ => println!("Unrecognized input entered. Please try again."),
-                }
-            } 
-            println!("Proceeding with indexing {} files.", files.len())
-        } else {
-            println!("{} files discovered.\n\
+    if !args.force {
+        loop {
+            println!("{} file(s) discovered.\n\
                 {} queued for indexing.\n\
-                {} queued for clearing.",
+                {} queued for clearing.\n\
+                Confirm? (Y/N)",
                 files.len() + unknown.len(),
                 files.len(),
                 unknown.len());
+            let mut confirmation = String::new();
+            std::io::stdin().read_line(&mut confirmation).expect("Failed to read line");
+
+            // Trim the confirmation to remove any extra whitespace or newline characters
+            let confirmation = confirmation.trim();
+            match confirmation {
+                "Y" | "y" | "yes" | "Yes" => break,
+                "N" | "n" | "no" | "No" => {
+                    println!("Aborting...");
+                    return Ok(());
+                },
+                _ => println!("Unrecognized input entered. Please try again."),
+            }
         }
-
-        // Configure fetch components
-        let data_dir = app_config::get_default_index_directory();
-        // image index provider
-        let siglip_store = Arc::new(LanceDBStore::local_full(
-            data_dir.as_str(),
-            "siglip2_chunkfile".to_owned()
-        ).await
-        .unwrap_or_else(|e| 
-            panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
-            data_dir.as_str())));
-        let basic_image = ImageIndexProvider::using(siglip_store.clone());
-        // pdf index provider
-        let gemma_store = Arc::new(LanceDBStore::local_full(
-            data_dir.as_str(),
-            "gemma_chunkfile".to_owned()
-        ).await
-        .unwrap_or_else(|e| 
-            panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
-            data_dir.as_str())));
-        let pdf = PdfIndexProvider::using(gemma_store, siglip_store);
-        let file_indexer: Arc<FileIndexer> = Arc::new(FileIndexer::with(vec![Arc::new(basic_image), Arc::new(pdf)]));
-
-        println!("Indexing {} files into index stored in the directory {} with {} parallel jobs",
+        println!("Proceeding with indexing {} files.", files.len())
+    } else {
+        println!("{} files discovered.\n\
+            {} queued for indexing.\n\
+            {} queued for clearing.",
+            files.len() + unknown.len(),
             files.len(),
-            data_dir.as_str(),
-            args.jobs);
-        let iresults = spawn_index_jobs(file_indexer.clone(), files, args.jobs).await;
-        let mut isuccess = 0;
-        let mut ifail = 0;
-        for result in iresults {
-            if let Ok(()) = result {
-                isuccess += 1;
-            } else {
-                ifail += 1;
-            }
-        }
-
-        println!("Clearing {} unknown files from index stored in directory {} with {} parallel jobs",
-            unknown.len(),
-            data_dir.as_str(),
-            args.jobs);
-        let cresults = spawn_clear_jobs(file_indexer, unknown, args.jobs).await;
-        let mut csuccess = 0;
-        let mut cfail = 0;
-        for result in cresults {
-            if let Ok(()) = result {
-                csuccess += 1;
-            } else {
-                cfail += 1;
-            }
-        }
-
-        println!("{isuccess} files successfully indexed, {ifail} files failed indexing.");
-        println!("{csuccess} files successfully cleared, {cfail} files failed clearing.");
-        if ifail > 0 || cfail > 0 {
-            return Err(anyhow::Error::msg("oh no"));
-        }
-
-        Ok(())
-    });
-
-    if args.metrics {
-        print_metrics(&rt.metrics());
-
-        let elapsed = start_time.elapsed();
-        println!("Total indexing duration: {:.2?}", elapsed);
-        println!("Press Enter to quit...");
-        let mut empty = String::new();
-        let _ = std::io::stdin().read_line(&mut empty);
+            unknown.len());
     }
 
-    Ok(result?)
+    // Configure fetch components
+    let data_dir = app_config::get_default_index_directory();
+    // image index provider
+    let siglip_store = Arc::new(LanceDBStore::local_full(
+        data_dir.as_str(),
+        "siglip2_chunkfile".to_owned()
+    ).await
+    .unwrap_or_else(|e|
+        panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
+        data_dir.as_str())));
+    let basic_image = ImageIndexProvider::using(siglip_store.clone());
+    // pdf index provider
+    let gemma_store = Arc::new(LanceDBStore::local_full(
+        data_dir.as_str(),
+        "gemma_chunkfile".to_owned()
+    ).await
+    .unwrap_or_else(|e|
+        panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
+        data_dir.as_str())));
+    let pdf = PdfIndexProvider::using(gemma_store, siglip_store);
+    let file_indexer: Arc<FileIndexer> = Arc::new(FileIndexer::with(vec![Arc::new(basic_image), Arc::new(pdf)]));
+
+    println!("Indexing {} files into index stored in the directory {} with {} parallel jobs",
+        files.len(),
+        data_dir.as_str(),
+        args.jobs);
+    let iresults = spawn_index_jobs(file_indexer.clone(), files, args.jobs).await;
+    let mut isuccess = 0;
+    let mut ifail = 0;
+    for result in iresults {
+        if let Ok(()) = result {
+            isuccess += 1;
+        } else {
+            ifail += 1;
+        }
+    }
+
+    println!("Clearing {} unknown files from index stored in directory {} with {} parallel jobs",
+        unknown.len(),
+        data_dir.as_str(),
+        args.jobs);
+    let cresults = spawn_clear_jobs(file_indexer, unknown, args.jobs).await;
+    let mut csuccess = 0;
+    let mut cfail = 0;
+    for result in cresults {
+        if let Ok(()) = result {
+            csuccess += 1;
+        } else {
+            cfail += 1;
+        }
+    }
+
+    println!("{isuccess} files successfully indexed, {ifail} files failed indexing.");
+    println!("{csuccess} files successfully cleared, {cfail} files failed clearing.");
+    if ifail > 0 || cfail > 0 {
+        return Err(anyhow::Error::msg("oh no").into());
+    }
+
+    Ok(())
 }
 
 /// Sanitizes, sorts, and dedupes a vec of PathBufs into Utf8PathBufs
@@ -196,7 +149,7 @@ fn clean_paths(paths: Vec<PathBuf>) -> Vec<Utf8PathBuf> {
 /// 1) files = path.is_file() is true
 /// 2) folders = path.is_dir() is true
 /// 3) unknown = neither is true
-/// 
+///
 /// Returns classified paths in a struct
 struct ClassifiedPaths {
     pub files: Vec<PathBuf>,
@@ -225,7 +178,7 @@ fn explore_directories(folders: Vec<PathBuf>, files: &mut Vec<PathBuf>, recursiv
     while let Some(folder) = queue.pop() {
          // guaranteed to exist
         if hashset.contains(&folder) {
-            eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
+            eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular
                 directory structure somewhere? Folder: {}", folder.to_str().expect("error converting pathbuf to string"));
                 continue
         }
@@ -265,7 +218,7 @@ async fn spawn_index_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
     bar.tick();
 
     for file in files {
-        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e| 
+        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e|
             panic!("Failed to acquire semaphore permit (was the semaphore closed?): {e:?}"));
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();
@@ -331,7 +284,7 @@ async fn spawn_clear_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
     bar.tick();
 
     for file in files {
-        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e| 
+        let permit = semaphore.clone().acquire_owned().await.unwrap_or_else(|e|
             panic!("Failed to acquire semaphore permit (was the semaphore closed?): {e:?}"));
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();

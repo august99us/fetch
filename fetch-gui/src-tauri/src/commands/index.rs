@@ -37,9 +37,7 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
             total: num_files as f32,
         },
     )
-    .unwrap_or_else(|e: tauri::Error| {
-        eprintln!("Could not emit progress event: {}", e)
-    });
+    .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit progress event: {}", e));
 
     for (i, path) in unique_files.iter().map(Utf8PathBuf::as_path).enumerate() {
         app.emit_to(
@@ -51,15 +49,18 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
         )
         .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
 
-        file_indexer.index(path, Some(Utc::now())).await.map_err(|e| {
-            format!(
-                "Error while indexing files: {}, source: {}",
-                e,
-                e.source()
-                    .map(<dyn Error>::to_string)
-                    .unwrap_or("".to_string())
-            )
-        })?;
+        file_indexer
+            .index(path, Some(Utc::now()))
+            .await
+            .map_err(|e| {
+                format!(
+                    "Error while indexing files: {}, source: {}",
+                    e,
+                    e.source()
+                        .map(<dyn Error>::to_string)
+                        .unwrap_or("".to_string())
+                )
+            })?;
 
         app.emit_to(
             "full",
@@ -69,9 +70,7 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
                 total: num_files as f32,
             },
         )
-        .unwrap_or_else(|e: tauri::Error| {
-            eprintln!("Could not emit progress event: {}", e)
-        });
+        .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit progress event: {}", e));
     }
 
     app.emit_to(

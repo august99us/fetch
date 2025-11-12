@@ -2,14 +2,46 @@ use camino::{Utf8Path, Utf8PathBuf};
 use log::{error, info};
 use ort::execution_providers::*;
 
-use crate::index::{embedding::{embeddinggemma, siglip2}, provider::pdf::PDFIUM_LIB_PATH};
+use crate::index::embedding::{embeddinggemma, sessions::init_model_resource_directory, siglip2};
 
-pub fn init_pdfium(pdfium_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
-    PDFIUM_LIB_PATH.set(match pdfium_lib_path {
-        Some(path) => path.to_owned(),
-        None => Utf8PathBuf::from("./"),
-    }).map_err(|_| anyhow::anyhow!("PDFium library path has already been set"))
+/// Initialize dynamic libraries and other dynamic resource paths.
+/// Must be called before init_indexing or init_querying
+pub fn init_resources(path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
+    let default_path = Utf8PathBuf::default();
+    let resource_path = path.unwrap_or(&default_path);
+
+    #[cfg(feature = "pdf")]
+    {
+        use crate::index::provider::pdf::PDFIUM_LIB_PATH;
+
+        info!("Initializing PDFium...");
+        PDFIUM_LIB_PATH.set(resource_path.to_owned())
+            .map_err(|_| anyhow::anyhow!("PDFium library path has already been set"))?;
+    }
+
+    info!("Initializing ONNX Runtime...");
+    init_ort(path)?;
+
+    info!("Initializing base model directory...");
+    let base_model_dir = resource_path.join("models");
+    init_model_resource_directory(&base_model_dir);
+
+    Ok(())
 }
+
+// TODO: implement functionality to init for specific models
+pub fn init_indexing(_models: Vec<&str>) {
+    // do init for models
+    siglip2::init_indexing();
+    embeddinggemma::init();
+}
+pub fn init_querying(_models: Vec<&str>) {
+    // do init for models
+    siglip2::init_querying();
+    embeddinggemma::init();
+}
+
+// Private initialization functions
 
 /// Initialize ONNX Runtime with optional library path
 ///
@@ -21,7 +53,7 @@ pub fn init_pdfium(pdfium_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Err
 /// - Windows: onnxruntime.dll
 /// - Linux: libonnxruntime.so
 /// - macOS: libonnxruntime.dylib
-pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
+fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
     let mut execution_providers = vec![];
 
     #[cfg(feature = "qnn")]
@@ -76,27 +108,4 @@ pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
             Err(e.into())
         }
     }
-}
-
-// Re-export from session_pool
-pub use crate::index::embedding::sessions::init_model_resource_directory;
-
-// TODO: implement functionality to init for specific models
-pub fn init_indexing(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
-    if let Some(dir) = base_model_dir {
-        init_model_resource_directory(dir);
-    }
-
-    // do init for models
-    siglip2::init_indexing();
-    embeddinggemma::init();
-}
-pub fn init_querying(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
-    if let Some(dir) = base_model_dir {
-        init_model_resource_directory(dir);
-    }
-
-    // do init for models
-    siglip2::init_querying();
-    embeddinggemma::init();
 }
