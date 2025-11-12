@@ -13,59 +13,61 @@ use crate::store::{FTSData, Filterable, lancedb::{ArrowData, RowBuilder}};
 
 // Chunkfile ArrowData integrations
 
-// Attribute names (field names on the ChunkFile struct)
-pub const ORIGINAL_FILE_ATTR: &str = "original_file";
-pub const CHUNK_CHANNEL_ATTR: &str = "chunk_channel";
-pub const CHUNK_SEQUENCE_ID_ATTR: &str = "chunk_sequence_id";
-pub const CHUNKFILE_ATTR: &str = "chunkfile";
-pub const CHUNK_TYPE_ATTR: &str = "chunk_type";
-pub const CHUNK_LENGTH_ATTR: &str = "chunk_length";
-pub const FILE_CREATION_DATE_ATTR: &str = "original_file_creation_date";
-pub const FILE_MODIFIED_DATE_ATTR: &str = "original_file_modified_date";
-pub const FILE_SIZE_ATTR: &str = "original_file_size";
-pub const FILE_TAGS_ATTR: &str = "original_file_tags";
+impl ChunkFile {
+    // Attribute names (field names on the ChunkFile struct)
+    pub const ORIGINAL_FILE_ATTR: &str = "original_file";
+    pub const CHUNK_CHANNEL_ATTR: &str = "chunk_channel";
+    pub const CHUNK_SEQUENCE_ID_ATTR: &str = "chunk_sequence_id";
+    pub const CHUNKFILE_ATTR: &str = "chunkfile";
+    pub const CHUNK_TYPE_ATTR: &str = "chunk_type";
+    pub const CHUNK_LENGTH_ATTR: &str = "chunk_length";
+    pub const FILE_CREATION_DATE_ATTR: &str = "original_file_creation_date";
+    pub const FILE_MODIFIED_DATE_ATTR: &str = "original_file_modified_date";
+    pub const FILE_SIZE_ATTR: &str = "original_file_size";
+    pub const FILE_TAGS_ATTR: &str = "original_file_tags";
 
-// Column names (Arrow schema column names)
-const ORIGINAL_FILE_COLUMN_NAME: &str = "original_file";
-const CHUNK_CHANNEL_COLUMN_NAME: &str = "chunk_channel";
-const CHUNK_SEQUENCE_ID_COLUMN_NAME: &str = "chunk_sequence_id";
-const CHUNKFILE_COLUMN_NAME: &str = "chunkfile";
-const CHUNK_TYPE_COLUMN_NAME: &str = "chunk_type";
-const CHUNK_LENGTH_COLUMN_NAME: &str = "chunk_length";
-const FILE_CREATION_DATE_COLUMN_NAME: &str = "original_file_creation_date";
-const FILE_MODIFIED_DATE_COLUMN_NAME: &str = "original_file_modified_date";
-const FILE_SIZE_COLUMN_NAME: &str = "original_file_size";
-const FILE_TAGS_COLUMN_NAME: &str = "original_file_tags";
+    // Column names (Arrow schema column names)
+    const ORIGINAL_FILE_COLUMN_NAME: &str = "original_file";
+    const CHUNK_CHANNEL_COLUMN_NAME: &str = "chunk_channel";
+    const CHUNK_SEQUENCE_ID_COLUMN_NAME: &str = "chunk_sequence_id";
+    const CHUNKFILE_COLUMN_NAME: &str = "chunkfile";
+    const CHUNK_TYPE_COLUMN_NAME: &str = "chunk_type";
+    const CHUNK_LENGTH_COLUMN_NAME: &str = "chunk_length";
+    const FILE_CREATION_DATE_COLUMN_NAME: &str = "original_file_creation_date";
+    const FILE_MODIFIED_DATE_COLUMN_NAME: &str = "original_file_modified_date";
+    const FILE_SIZE_COLUMN_NAME: &str = "original_file_size";
+    const FILE_TAGS_COLUMN_NAME: &str = "original_file_tags";
+}
 
 static ORIGINAL_FILE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(ORIGINAL_FILE_COLUMN_NAME, DataType::Utf8, false))
+    Arc::new(Field::new(ChunkFile::ORIGINAL_FILE_COLUMN_NAME, DataType::Utf8, false))
 });
 static CHUNK_CHANNEL_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(CHUNK_CHANNEL_COLUMN_NAME, DataType::Utf8, false))
+    Arc::new(Field::new(ChunkFile::CHUNK_CHANNEL_COLUMN_NAME, DataType::Utf8, false))
 });
 static CHUNK_SEQUENCE_ID_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(CHUNK_SEQUENCE_ID_COLUMN_NAME, DataType::Float32, false))
+    Arc::new(Field::new(ChunkFile::CHUNK_SEQUENCE_ID_COLUMN_NAME, DataType::Float32, false))
 });
 static CHUNKFILE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(CHUNKFILE_COLUMN_NAME, DataType::Utf8, false))
+    Arc::new(Field::new(ChunkFile::CHUNKFILE_COLUMN_NAME, DataType::Utf8, false))
 });
 static CHUNK_TYPE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(CHUNK_TYPE_COLUMN_NAME, DataType::Utf8, false))
+    Arc::new(Field::new(ChunkFile::CHUNK_TYPE_COLUMN_NAME, DataType::Utf8, false))
 });
 static CHUNK_LENGTH_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(CHUNK_LENGTH_COLUMN_NAME, DataType::Float32, false))
+    Arc::new(Field::new(ChunkFile::CHUNK_LENGTH_COLUMN_NAME, DataType::Float32, false))
 });
 static FILE_CREATION_DATE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(FILE_CREATION_DATE_COLUMN_NAME, DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())), false))
+    Arc::new(Field::new(ChunkFile::FILE_CREATION_DATE_COLUMN_NAME, DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())), false))
 });
 static FILE_MODIFIED_DATE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(FILE_MODIFIED_DATE_COLUMN_NAME, DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())), false))
+    Arc::new(Field::new(ChunkFile::FILE_MODIFIED_DATE_COLUMN_NAME, DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())), false))
 });
 static FILE_SIZE_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(FILE_SIZE_COLUMN_NAME, DataType::UInt64, false))
+    Arc::new(Field::new(ChunkFile::FILE_SIZE_COLUMN_NAME, DataType::UInt64, false))
 });
 static FILE_TAGS_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
-    Arc::new(Field::new(FILE_TAGS_COLUMN_NAME, DataType::Utf8, false))
+    Arc::new(Field::new(ChunkFile::FILE_TAGS_COLUMN_NAME, DataType::Utf8, false))
 });
 
 static CHUNKFILE_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
@@ -94,6 +96,12 @@ pub struct ChunkFileRowBuilder {
     original_file_modified_date: TimestampMillisecondBuilder,
     original_file_size: UInt64Builder,
     original_file_tags: StringBuilder,
+}
+
+impl Default for ChunkFileRowBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ChunkFileRowBuilder {
@@ -167,45 +175,45 @@ impl ArrowData for ChunkFile {
         (0..num_rows).map(move |i| {
             // ::<i32> specifies 32-bit offsets for string arrays (matching DataType::Utf8 in schema).
             // Use ::<i64> only for LargeUtf8 arrays with >2GB total string data.
-            let original_file = record_batch.column_by_name(ORIGINAL_FILE_COLUMN_NAME)
+            let original_file = record_batch.column_by_name(ChunkFile::ORIGINAL_FILE_COLUMN_NAME)
                 .expect("original_file column not found")
                 .as_string::<i32>()
                 .value(i);
-            let chunk_channel = record_batch.column_by_name(CHUNK_CHANNEL_COLUMN_NAME)
+            let chunk_channel = record_batch.column_by_name(ChunkFile::CHUNK_CHANNEL_COLUMN_NAME)
                 .expect("chunk_channel column not found")
                 .as_string::<i32>()
                 .value(i)
                 .to_string();
-            let chunk_sequence_id = record_batch.column_by_name(CHUNK_SEQUENCE_ID_COLUMN_NAME)
+            let chunk_sequence_id = record_batch.column_by_name(ChunkFile::CHUNK_SEQUENCE_ID_COLUMN_NAME)
                 .expect("chunk_sequence_id column not found")
                 .as_primitive::<Float32Type>()
                 .value(i);
-            let chunkfile = record_batch.column_by_name(CHUNKFILE_COLUMN_NAME)
+            let chunkfile = record_batch.column_by_name(ChunkFile::CHUNKFILE_COLUMN_NAME)
                 .expect("chunkfile column not found")
                 .as_string::<i32>()
                 .value(i)
                 .to_string();
-            let chunk_type = record_batch.column_by_name(CHUNK_TYPE_COLUMN_NAME)
+            let chunk_type = record_batch.column_by_name(ChunkFile::CHUNK_TYPE_COLUMN_NAME)
                 .expect("chunk_type column not found")
                 .as_string::<i32>()
                 .value(i);
-            let chunk_length = record_batch.column_by_name(CHUNK_LENGTH_COLUMN_NAME)
+            let chunk_length = record_batch.column_by_name(ChunkFile::CHUNK_LENGTH_COLUMN_NAME)
                 .expect("chunk_length column not found")
                 .as_primitive::<Float32Type>()
                 .value(i);
-            let original_file_creation_date = record_batch.column_by_name(FILE_CREATION_DATE_COLUMN_NAME)
+            let original_file_creation_date = record_batch.column_by_name(ChunkFile::FILE_CREATION_DATE_COLUMN_NAME)
                 .expect("original_file_creation_date column not found")
                 .as_primitive::<TimestampMillisecondType>()
                 .value(i);
-            let original_file_modified_date = record_batch.column_by_name(FILE_MODIFIED_DATE_COLUMN_NAME)
+            let original_file_modified_date = record_batch.column_by_name(ChunkFile::FILE_MODIFIED_DATE_COLUMN_NAME)
                 .expect("original_file_modified_date column not found")
                 .as_primitive::<TimestampMillisecondType>()
                 .value(i);
-            let original_file_size = record_batch.column_by_name(FILE_SIZE_COLUMN_NAME)
+            let original_file_size = record_batch.column_by_name(ChunkFile::FILE_SIZE_COLUMN_NAME)
                 .expect("original_file_size column not found")
                 .as_primitive::<UInt64Type>()
                 .value(i);
-            let tags_json_str = record_batch.column_by_name(FILE_TAGS_COLUMN_NAME)
+            let tags_json_str = record_batch.column_by_name(ChunkFile::FILE_TAGS_COLUMN_NAME)
                 .expect("original_file_tags column not found")
                 .as_string::<i32>()
                 .value(i);
@@ -232,16 +240,16 @@ impl ArrowData for ChunkFile {
     
     fn attribute_to_column_name(attr: &str) -> &'static str {
         match attr {
-            ORIGINAL_FILE_ATTR => ORIGINAL_FILE_COLUMN_NAME,
-            CHUNK_CHANNEL_ATTR => CHUNK_CHANNEL_COLUMN_NAME,
-            CHUNK_SEQUENCE_ID_ATTR => CHUNK_SEQUENCE_ID_COLUMN_NAME,
-            CHUNKFILE_ATTR => CHUNKFILE_COLUMN_NAME,
-            CHUNK_TYPE_ATTR => CHUNK_TYPE_COLUMN_NAME,
-            CHUNK_LENGTH_ATTR => CHUNK_LENGTH_COLUMN_NAME,
-            FILE_CREATION_DATE_ATTR => FILE_CREATION_DATE_COLUMN_NAME,
-            FILE_MODIFIED_DATE_ATTR => FILE_MODIFIED_DATE_COLUMN_NAME,
-            FILE_SIZE_ATTR => FILE_SIZE_COLUMN_NAME,
-            FILE_TAGS_ATTR => FILE_TAGS_COLUMN_NAME,
+            ChunkFile::ORIGINAL_FILE_ATTR => ChunkFile::ORIGINAL_FILE_COLUMN_NAME,
+            ChunkFile::CHUNK_CHANNEL_ATTR => ChunkFile::CHUNK_CHANNEL_COLUMN_NAME,
+            ChunkFile::CHUNK_SEQUENCE_ID_ATTR => ChunkFile::CHUNK_SEQUENCE_ID_COLUMN_NAME,
+            ChunkFile::CHUNKFILE_ATTR => ChunkFile::CHUNKFILE_COLUMN_NAME,
+            ChunkFile::CHUNK_TYPE_ATTR => ChunkFile::CHUNK_TYPE_COLUMN_NAME,
+            ChunkFile::CHUNK_LENGTH_ATTR => ChunkFile::CHUNK_LENGTH_COLUMN_NAME,
+            ChunkFile::FILE_CREATION_DATE_ATTR => ChunkFile::FILE_CREATION_DATE_COLUMN_NAME,
+            ChunkFile::FILE_MODIFIED_DATE_ATTR => ChunkFile::FILE_MODIFIED_DATE_COLUMN_NAME,
+            ChunkFile::FILE_SIZE_ATTR => ChunkFile::FILE_SIZE_COLUMN_NAME,
+            ChunkFile::FILE_TAGS_ATTR => ChunkFile::FILE_TAGS_COLUMN_NAME,
             _ => panic!("Unknown ChunkFile attribute: {}", attr),
         }
     }
@@ -250,10 +258,10 @@ impl ArrowData for ChunkFile {
 impl Filterable for ChunkFile {
     fn filterable_attributes() -> Vec<&'static str> {
         [
-            ORIGINAL_FILE_ATTR,
-            FILE_CREATION_DATE_ATTR,
-            FILE_MODIFIED_DATE_ATTR,
-            FILE_SIZE_ATTR,
+            ChunkFile::ORIGINAL_FILE_ATTR,
+            ChunkFile::FILE_CREATION_DATE_ATTR,
+            ChunkFile::FILE_MODIFIED_DATE_ATTR,
+            ChunkFile::FILE_SIZE_ATTR,
         ].to_vec()
     }
 }
@@ -261,8 +269,8 @@ impl Filterable for ChunkFile {
 impl FTSData for ChunkFile {
     fn fts_attributes() -> Vec<&'static str> {
         [
-            ORIGINAL_FILE_ATTR,
-            FILE_TAGS_ATTR,
+            ChunkFile::ORIGINAL_FILE_ATTR,
+            ChunkFile::FILE_TAGS_ATTR,
         ].to_vec()
     }
 }

@@ -1,4 +1,6 @@
-use fetch_core::file_index::query_files::QueryFiles;
+use std::error::Error;
+
+use fetch_core::files::query::QueryFiles;
 use serde::Serialize;
 
 use crate::utility::get_file_queryer;
@@ -24,7 +26,7 @@ pub async fn query(query: &str, cursor_id: Option<&str>) -> Result<FileQueryingR
     let file_queryer = get_file_queryer().await?;
 
     file_queryer
-        .query_n(&query, 1, cursor_id)
+        .query_n(query, 100, cursor_id)
         .await
         .map(|result| {
             FileQueryingResult {
@@ -45,5 +47,5 @@ pub async fn query(query: &str, cursor_id: Option<&str>) -> Result<FileQueryingR
                 cursor_id: result.cursor_id,
             }
         })
-        .map_err(|e| format!("{}, source: {}", e.to_string(), e.source.to_string()))
+        .map_err(|e| format!("{}, source: {:?}", e, e.source()))
 }

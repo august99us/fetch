@@ -8,7 +8,7 @@ use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use camino::Utf8PathBuf;
 use chrono::{TimeZone, Utc};
 
-use crate::file_index::pagination::{AggregateFileScore, QueryCursor};
+use crate::files::pagination::{AggregateFileScore, QueryCursor};
 use crate::store::lancedb::{ArrowData, RowBuilder};
 use crate::store::{Filterable, KeyedSequencedData};
 

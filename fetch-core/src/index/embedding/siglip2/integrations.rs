@@ -5,22 +5,23 @@ use arrow::datatypes::Float32Type;
 use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch};
 use arrow_schema::{DataType, Field, Schema};
 
-use crate::index::{ChunkFile, embedding::siglip2_image_embedder::Siglip2EmbeddedChunkFile};
+use crate::index::{ChunkFile, embedding::siglip2::Siglip2EmbeddedChunkFile};
 use crate::store::{FTSData, Filterable, lancedb::{ArrowData, RowBuilder}, KeyedSequencedData, VectorData};
 
-const VECTOR_ATTRIBUTE_NAME: &str = "embedding";
-const VECTOR_COLUMN_NAME: &str = "embedding";
-const VECTOR_LENGTH: u32 = 768;
+impl Siglip2EmbeddedChunkFile {
+    const VECTOR_ATTRIBUTE_NAME: &str = "embedding";
+    const VECTOR_COLUMN_NAME: &str = "embedding";
+}
 
 static VECTOR_FIELD: LazyLock<Arc<Field>> = LazyLock::new(|| {
     Arc::new(Field::new(
-        VECTOR_COLUMN_NAME,
+        Siglip2EmbeddedChunkFile::VECTOR_COLUMN_NAME,
         DataType::FixedSizeList(
             // This should not be nullable=true but i have not been able to get lancedb
             // to accept nullable=false. it converts nullable false -> true quietly every
             // time.
             Arc::new(Field::new("item", DataType::Float32, true)),
-            VECTOR_LENGTH.try_into().unwrap(),
+            Siglip2EmbeddedChunkFile::VECTOR_LENGTH.try_into().unwrap(),
         ),
         false,
     ))
@@ -31,12 +32,18 @@ pub struct Siglip2EmbeddedChunkFileRowBuilder {
     vector_builder: FixedSizeListBuilder<Float32Builder>,
 }
 
+impl Default for Siglip2EmbeddedChunkFileRowBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Siglip2EmbeddedChunkFileRowBuilder {
     pub fn new() -> Self {
         Self {
             chunkfile_builder: ChunkFile::row_builder(),
-            vector_builder: FixedSizeListBuilder::new(Float32Builder::new(), 
-                VECTOR_LENGTH.try_into().unwrap()),
+            vector_builder: FixedSizeListBuilder::new(Float32Builder::new(),
+                Siglip2EmbeddedChunkFile::VECTOR_LENGTH.try_into().unwrap()),
         }
     }
 }
@@ -79,8 +86,8 @@ impl ArrowData for Siglip2EmbeddedChunkFile {
 
     fn attribute_to_column_name(attr: &str) -> &'static str {
         // Delegate to ChunkFile for its attributes, handle "embedding" ourselves
-        if attr == VECTOR_ATTRIBUTE_NAME {
-            VECTOR_COLUMN_NAME
+        if attr == Siglip2EmbeddedChunkFile::VECTOR_ATTRIBUTE_NAME {
+            Siglip2EmbeddedChunkFile::VECTOR_COLUMN_NAME
         } else {
             ChunkFile::attribute_to_column_name(attr)
         }
@@ -88,7 +95,7 @@ impl ArrowData for Siglip2EmbeddedChunkFile {
 
     fn batch_to_iter(record_batch: RecordBatch) -> impl IntoIterator<Item = Self> {
         // Extract vector column
-        let vector_column = record_batch.column_by_name(VECTOR_COLUMN_NAME)
+        let vector_column = record_batch.column_by_name(Siglip2EmbeddedChunkFile::VECTOR_COLUMN_NAME)
             .expect("embedding column should exist")
             .as_any().downcast_ref::<FixedSizeListArray>()
             .expect("Embedding column could not be cast to FixedSizeListArray")
@@ -103,7 +110,7 @@ impl ArrowData for Siglip2EmbeddedChunkFile {
         let chunkfile_iter = ChunkFile::batch_to_iter(record_batch).into_iter();
 
         // Combine ChunkFile with vectors
-        chunkfile_iter.zip(vector_column.into_iter())
+        chunkfile_iter.zip(vector_column)
             .map(|(chunkfile, embedding)| Siglip2EmbeddedChunkFile {
                 chunkfile,
                 embedding,
@@ -117,11 +124,11 @@ impl VectorData for Siglip2EmbeddedChunkFile {
     }
 
     fn vector_attribute() -> &'static str {
-        VECTOR_ATTRIBUTE_NAME
+        Siglip2EmbeddedChunkFile::VECTOR_ATTRIBUTE_NAME
     }
 
     fn vector_length() -> u32 {
-        VECTOR_LENGTH
+        Siglip2EmbeddedChunkFile::VECTOR_LENGTH
     }
 }
 

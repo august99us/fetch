@@ -4,7 +4,8 @@ version = "0.0.2"
 edition = "2021"
 
 [features]
-default = ["psd", "ort/load-dynamic"]
+default = ["pdf", "psd"]
+pdf = ["pdfium-render", "libloading"]
 cuda = ["ort/cuda"]
 qnn = ["ort/qnn"]
 
@@ -13,6 +14,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+zip = "2.2"
+flate2 = "1.0"
+tar = "0.4"
 
 [dependencies]
 # Workspace dependencies
@@ -23,6 +27,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["io-util"] }
 
 # LanceDB dependencies
 arrow = "55.1"
@@ -31,12 +36,18 @@ arrow-schema = "55.1"
 lancedb = { version = "0.21.1", default-features = false } # need oss maybe?
 
 # NN Inference dependencies
-ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray"] }
+# Theoretically, i should be letting binary crates determine how they want to load dylibs. But it seems
+# simpler to just do it in fetch-core for now.
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
 ndarray = { version = "0.16", default-features = false }
 
-# Preview Generation dependencies
+# File Processing dependencies
 image = "0.25.6"
 psd = { version = "0.3.5", optional = true }
+# PDF parsing dependencies - pdfium-render (Google's PDFium)
+# Need to pin compatible versions due to libloading API changes
+pdfium-render = { version = "0.8", optional = true }
+libloading = { version = "=0.7.4", optional = true } # Force older compatible version
 
 # Other dependencies
 async-trait = "0.1"

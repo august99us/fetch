@@ -1,9 +1,10 @@
 use std::{collections::HashSet, error::Error, path::{self, PathBuf}, sync::Arc, time::Duration};
 
 use camino::Utf8PathBuf;
+use chrono::Utc;
 use clap::Parser;
 use fetch_cli::utility::print_metrics;
-use fetch_core::{app_config, init_ort, file_index::{index_files::{IndexFiles, FileIndexingResult, FileIndexingResultType}, FileIndexer}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
+use fetch_core::{app_config, files::{FileIndexer, index::{FileIndexingErrorType, FileIndexingResult, FileIndexingResultType, IndexFiles}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, init_ort, store::lancedb::LanceDBStore};
 use indicatif::ProgressBar;
 use normalize_path::NormalizePath;
 use tokio::{runtime, sync::Semaphore, task};
@@ -11,7 +12,7 @@ use tokio::{runtime, sync::Semaphore, task};
 #[derive(Parser, Debug)]
 #[command(name = "fetch-index")]
 #[command(author = "August Sun, august99us@gmail.com")]
-#[command(version = "0.1")]
+#[command(version = "0.0.2")]
 #[command(about = "indexes things semantically", long_about = None)]
 struct Args {
     /// Verbose mode
@@ -99,14 +100,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                 unknown.len());
         }
 
+        // Configure fetch components
         let data_dir = app_config::get_default_index_directory();
-        let siglip_store = LanceDBStore::local_full(
+        // image index provider
+        let siglip_store = Arc::new(LanceDBStore::local_full(
             data_dir.as_str(),
             "siglip2_chunkfile".to_owned()
         ).await
-        .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: {}. Error: {e:?}", data_dir.as_str()));
-        let basic_image = BasicImageIndexProvider::using(siglip_store);
-        let file_indexer: Arc<FileIndexer> = Arc::new(FileIndexer::with(vec![Arc::new(basic_image)]));
+        .unwrap_or_else(|e| 
+            panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
+            data_dir.as_str())));
+        let basic_image = ImageIndexProvider::using(siglip_store.clone());
+        // pdf index provider
+        let gemma_store = Arc::new(LanceDBStore::local_full(
+            data_dir.as_str(),
+            "gemma_chunkfile".to_owned()
+        ).await
+        .unwrap_or_else(|e| 
+            panic!("Could not open lancedb store with data dir: {}. Error: {e:?}",
+            data_dir.as_str())));
+        let pdf = PdfIndexProvider::using(gemma_store, siglip_store);
+        let file_indexer: Arc<FileIndexer> = Arc::new(FileIndexer::with(vec![Arc::new(basic_image), Arc::new(pdf)]));
 
         println!("Indexing {} files into index stored in the directory {} with {} parallel jobs",
             files.len(),
@@ -256,7 +270,7 @@ async fn spawn_index_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();
         let handle = task::spawn(async move {
-            let result = indexer_clone.index(&file).await;
+            let result = indexer_clone.index(&file, Some(Utc::now())).await;
 
             drop(permit); // Release the permit when done
             bar_clone.inc(1);
@@ -270,7 +284,26 @@ async fn spawn_index_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
                     Ok(())
                 },
                 Err(e) => {
-                    bar_clone.println(format!("Error while processing file with path {:?}: {:?}", e.path, e.source()));
+                    match e.r#type {
+                        FileIndexingErrorType::IndexProviders { provider_errors } => {
+                            for (provider_name, provider_error) in provider_errors {
+                                bar_clone.println(format!(
+                                    "Error from provider {} while processing file with path {:?}: {:?}",
+                                    provider_name,
+                                    e.path,
+                                    provider_error
+                                ));
+                            }
+                        },
+                        FileIndexingErrorType::Other { msg, source } => {
+                            bar_clone.println(format!(
+                                "Error while processing file with path {:?}: {}, source: {:?}",
+                                e.path,
+                                msg,
+                                source
+                            ));
+                        },
+                    }
                     Err(())
                 },
             }
@@ -303,7 +336,7 @@ async fn spawn_clear_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
         let indexer_clone = file_indexer.clone();
         let bar_clone = bar.clone();
         let handle = task::spawn(async move {
-            let result = indexer_clone.clear(&file).await;
+            let result = indexer_clone.clear(&file, None).await;
 
             drop(permit); // Release the permit when done
             bar_clone.inc(1);

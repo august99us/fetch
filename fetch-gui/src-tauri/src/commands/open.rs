@@ -9,7 +9,7 @@ pub async fn open(path: &str) -> Result<(), String> {
     open_file_with_default_app(path).map_err(|e| {
         format!(
             "{}, source: {}",
-            e.to_string(),
+            e,
             e.source().map(<dyn Error>::to_string).unwrap_or_default()
         )
     })

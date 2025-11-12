@@ -16,11 +16,15 @@ impl AggregateFileScore {
         self.max_score = self.max_score.max(score);
         self.num_chunks += 1;
     }
+
+    pub fn chunk_multiplier_score(&self) -> f32 {
+        self.max_score * 1.0 + (0.01 * self.num_chunks as f32)
+    }
 }
 
 impl AsRef<AggregateFileScore> for AggregateFileScore {
     fn as_ref(&self) -> &AggregateFileScore {
-        &self
+        self
     }
 }
 

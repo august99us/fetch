@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use crossbeam_channel::{unbounded, Receiver};
-use fetch_core::{app_config, file_index::{FileIndexer, index_files::IndexFiles}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
+use fetch_core::{app_config, files::{FileIndexer, index::IndexFiles}, index::provider::image::ImageIndexProvider, store::lancedb::LanceDBStore};
 use notify::{event::{CreateKind, DataChange, ModifyKind}, EventKind, RecursiveMode};
 use notify_debouncer_full::DebouncedEvent;
 use tokio::fs;
@@ -49,12 +49,12 @@ async fn main() -> Result<(), ()>{
     println!("File change tracking daemon is initiating workers...");
 
     let data_directory = app_config::get_default_index_directory();
-    let siglip_store = LanceDBStore::local_full(
+    let siglip_store = Arc::new(LanceDBStore::local_full(
         data_directory.as_str(),
         "siglip2_chunkfile".to_owned()
     ).await
-    .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}"));
-    let basic_image = BasicImageIndexProvider::using(siglip_store);
+    .unwrap_or_else(|e| panic!("Could not open lancedb store with data dir: ./data_dir. Error: {e:?}")));
+    let basic_image = ImageIndexProvider::using(siglip_store);
     let file_indexer = FileIndexer::with(vec![Arc::new(basic_image)]);
 
     let mut handles = Vec::with_capacity(worker_count);
@@ -103,7 +103,7 @@ async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: Debounce
             println!("File created: {file_path}");
 
             // index file
-            let result = file_indexer.index(file_path).await;
+            let result = file_indexer.index(file_path, None).await;
             match result {
                 Ok(_) => println!("File indexed successfully: {file_path}"),
                 Err(e) => eprintln!("Error indexing file {file_path}: {e:?}"),
@@ -117,7 +117,7 @@ async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: Debounce
             println!("File modified: {file_path:?}");
 
             // re-index file
-            let result = file_indexer.index(file_path).await;
+            let result = file_indexer.index(file_path, None).await;
             match result {
                 Ok(_) => println!("File updated successfully: {file_path}"),
                 Err(e) => eprintln!("Error indexing file {file_path}: {e:?}"),
@@ -133,8 +133,8 @@ async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: Debounce
                 .map(|p| <&Utf8Path>::try_from(p.as_path()).expect("Expected path to be valid UTF-8"));
             if let Some(second_file_path) = second_file_path {
                 println!("Two paths found. File renamed: {:?} to {:?}", first_file_path, second_file_path);
-                let clear_future = file_indexer.clear(first_file_path);
-                let index_future = file_indexer.index(second_file_path);
+                let clear_future = file_indexer.clear(first_file_path, None);
+                let index_future = file_indexer.index(second_file_path, None);
                 match clear_future.await {
                     Ok(_) => println!("File cleared from index: {first_file_path}"),
                     Err(e) => eprintln!("Error clearing file {first_file_path}: {e:?}"),
@@ -145,7 +145,7 @@ async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: Debounce
                 }
             } else {
                 println!("File renamed: {first_file_path:?}. Unknown whether this is the 'to' or 'from' name.");
-                let result = file_indexer.index(first_file_path).await;
+                let result = file_indexer.index(first_file_path, None).await;
                 match result {
                     Ok(_) => println!("File updated successfully (could be delete): {first_file_path}"),
                     Err(e) => eprintln!("Error indexing file {first_file_path}: {e:?}"),
@@ -159,7 +159,7 @@ async fn handle_event<I: IndexFiles>(file_indexer: &I, debounced_event: Debounce
                 .expect("Expected path to be valid UTF-8");
             println!("File removed: {file_path:?}");
 
-            let result = file_indexer.clear(file_path).await;
+            let result = file_indexer.clear(file_path, None).await;
             match result {
                 Ok(_) => println!("File cleared from index: {file_path}"),
                 Err(e) => eprintln!("Error clearing file {file_path}: {e:?}"),

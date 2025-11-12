@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::store::{ClearByFilter, FTSData, Filter, FilterRelation, FilterStoreError, FilterValue, Filterable, FullQueryResult, KeyedSequencedData, KeyedSequencedStore, KeyedSequencedStoreError, QueryByFilter, QueryByVector, QueryFull, VectorData, VectorQueryResult, VectorStoreError};
 
 // Number of operations to run before running optimize.
-const OPERATIONS_PER_OPTIMIZE: i32 = 5;
+const OPERATIONS_PER_OPTIMIZE: i32 = 20;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LanceDBError {
@@ -165,7 +165,7 @@ impl<D: ArrowData> LanceDBStore<D> {
 
     /// Creates index on key column, allowing for key based retrievals
     async fn create_key_index(table: &Table) -> Result<(), LanceDBError> {
-        debug!("Table {}: Creating key index", table.name());
+        info!("Table {}: Creating key index", table.name());
 
         table.create_index(&[KEY_COLUMN], Index::BTree(Default::default()))
             .execute()
@@ -297,7 +297,7 @@ impl<D: ArrowData + Filterable> LanceDBStore<D> {
             .collect();
 
         if !column_names.is_empty() {
-            debug!("Table {}: Creating filter indexes on columns: {:?}", self.table_name, column_names);
+            info!("Table {}: Creating filter indexes on columns: {:?}", self.table_name, column_names);
 
             for column_name in column_names {
                 self.table.create_index(&[column_name], Index::BTree(Default::default()))
@@ -338,7 +338,7 @@ impl<D: ArrowData + FTSData> LanceDBStore<D> {
             .collect();
 
         if !column_names.is_empty() {
-            debug!("Table {}: Creating FTS indexes on columns: {:?}", self.table_name, column_names);
+            info!("Table {}: Creating FTS indexes on columns: {:?}", self.table_name, column_names);
 
             for column_name in column_names {
                 self.table.create_index(&[column_name], Index::FTS(Default::default()))
@@ -376,12 +376,12 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> LanceDBStore<D> {
 
 // ClearByFilter implementation - only available when D: Filterable
 impl<D: ArrowData + Filterable> ClearByFilter<D> for LanceDBStore<D> {
-    async fn clear_filter<'a>(&self, filters: Vec<Filter<'a>>) -> Result<(), FilterStoreError> {
+    async fn clear_filter<'a>(&self, filters: &[Filter<'a>]) -> Result<(), FilterStoreError> {
         if filters.is_empty() {
             return Ok(());
         }
 
-        let condition = build_filter_condition::<D>(&filters)?;
+        let condition = build_filter_condition::<D>(filters)?;
 
         self.table.delete(&condition).await
             .map_err(|e| FilterStoreError::Clear { source: e.into() })?;
@@ -395,13 +395,13 @@ impl<D: ArrowData + Filterable> ClearByFilter<D> for LanceDBStore<D> {
 
 // QueryByFilter implementation - only available when D: Filterable
 impl<D: ArrowData + Filterable> QueryByFilter<D> for LanceDBStore<D> {
-    fn query_filter<'a>(&self, filters: Vec<Filter<'a>>) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> {
+    fn query_filter<'a>(&self, filters: &[Filter<'a>]) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> {
         self.query_filter_n(filters, 0, 0)
     }
 
-    async fn query_filter_n<'a>(&self, filters: Vec<Filter<'a>>, num_results: u32, offset: u32) -> Result<Vec<D>, FilterStoreError> {
+    async fn query_filter_n<'a>(&self, filters: &[Filter<'a>], num_results: u32, offset: u32) -> Result<Vec<D>, FilterStoreError> {
         let mut query = self.table.query();
-        query = apply_filters::<D, _>(query, &filters)?;
+        query = apply_filters::<D, _>(query, filters)?;
         query = apply_pagination(query, num_results, offset);
 
         let mut result_stream = query.execute().await
@@ -474,7 +474,7 @@ impl<D: ArrowData + VectorData> QueryByVector<D> for LanceDBStore<D> {
 
 // QueryFull implementation - only available when D: VectorData + Filterable + FTSData
 impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBStore<D> {
-    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: Vec<Filter<'a>>) -> 
+    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: &[Filter<'a>]) ->
         impl Future<Output = Result<Vec<FullQueryResult<D>>, anyhow::Error>> {
         self.query_full_n(vector, fts_terms, filters, 0, 0)
     }
@@ -483,7 +483,7 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
         &self,
         vector: Vec<f32>,
         fts_terms: Option<&str>,
-        filters: Vec<Filter<'a>>,
+        filters: &[Filter<'a>],
         num_results: u32,
         offset: u32,
     ) -> Result<Vec<FullQueryResult<D>>, anyhow::Error> {
@@ -495,7 +495,7 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
         }
 
         // Apply filters
-        query = apply_filters::<D, _>(query, &filters)
+        query = apply_filters::<D, _>(query, filters)
             .map_err(|e| VectorStoreError::Query { source: e.into() })?;
 
         // Apply pagination
@@ -599,7 +599,7 @@ fn build_filter_condition<D: ArrowData + Filterable>(filters: &[Filter]) -> Resu
         if !filterable_attributes.contains(&filter.attribute) {
             return Err(FilterStoreError::UnavailableFilter { attribute: filter.attribute.to_owned() })
         }
-        let column_name = D::attribute_to_column_name(&filter.attribute);
+        let column_name = D::attribute_to_column_name(filter.attribute);
         let operator = match filter.relation {
             FilterRelation::Lt => "<",
             FilterRelation::Eq => "=",
@@ -613,7 +613,7 @@ fn build_filter_condition<D: ArrowData + Filterable>(filters: &[Filter]) -> Resu
                 "{} {} timestamp '{}'",
                 column_name,
                 operator,
-                date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+                date_time.format("%Y-%m-%d %H:%M:%S"),
             ),
         };
         conditions.push(condition_str);
@@ -662,7 +662,7 @@ fn apply_fts<D: ArrowData + FTSData, Q: QueryBase>(mut query: Q, fts_terms: &str
         .into_iter()
         .map(|a| D::attribute_to_column_name(a).to_owned())
         .collect();
-    if fts_columns.len() > 0 {
+    if !fts_columns.is_empty() {
         let fts_query = FullTextSearchQuery::new_query(
             FtsQuery::MultiMatch(
                 MultiMatchQuery::try_new(

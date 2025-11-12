@@ -19,19 +19,13 @@ cuda = ["fetch-core/cuda"]
 qnn = ["fetch-core/qnn"]
 
 [build-dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
-
 tauri-build = { version = "2", features = [] }
-reqwest = { version = "0.12", features = ["blocking", "json"] }
-zip = "2.2"
-flate2 = "1.0"
-tar = "0.4"
 
 [dependencies]
 fetch-core = { path = "../../fetch-core" }
 
 camino = { workspace = true }
+chrono = { workspace = true }
 env_logger = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

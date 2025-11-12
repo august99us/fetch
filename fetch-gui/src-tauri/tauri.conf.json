@@ -46,7 +46,7 @@
     ],
     "resources": {
       "../../fetch-core/bundle/": "",
-      "bundle/": ""
+      "../bundle/": ""
     }
   }
 }

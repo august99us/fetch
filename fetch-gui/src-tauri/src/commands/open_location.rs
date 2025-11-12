@@ -11,7 +11,7 @@ pub async fn open_location(path: &str) -> Result<(), String> {
     show_file_location(path).map_err(|e| {
         format!(
             "{}, source: {}",
-            e.to_string(),
+            e,
             e.source().map(<dyn Error>::to_string).unwrap_or_default()
         )
     })

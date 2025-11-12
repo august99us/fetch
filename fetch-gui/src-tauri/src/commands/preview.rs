@@ -7,6 +7,6 @@ pub async fn preview(path: &str) -> Result<Option<String>, String> {
     match path.preview().await {
         Ok(Some(previewed_file)) => Ok(Some(previewed_file.preview_path.to_string())),
         Ok(None) => Ok(None),
-        Err(e) => Err(format!("Error while getting preview: {}", e.to_string())),
+        Err(e) => Err(format!("Error while getting preview: {}", e)),
     }
 }

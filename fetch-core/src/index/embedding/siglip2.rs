@@ -7,7 +7,11 @@ use ort::{inputs, value::TensorRef};
 use tokenizers::Tokenizer;
 use tokio::task;
 
-use crate::index::{ChunkFile, embedding::{EmbeddingError, sessions::{SessionPool, SessionPoolExt, create_session_pool, create_tokenizer}}};
+use crate::index::{ChunkFile, ChunkType, embedding::{EmbeddingError, sessions::{SessionPool, SessionPoolExt, create_session_pool, create_tokenizer}}};
+
+impl Siglip2EmbeddedChunkFile {
+    const VECTOR_LENGTH: u32 = 768;
+}
 
 pub struct Siglip2EmbeddedChunkFile {
     pub chunkfile: ChunkFile,
@@ -15,6 +19,14 @@ pub struct Siglip2EmbeddedChunkFile {
 }
 
 pub async fn embed_chunk(chunkfile: ChunkFile) -> Result<Siglip2EmbeddedChunkFile, EmbeddingError> {
+    if chunkfile.chunk_type != ChunkType::Image {
+        return Err(EmbeddingError::InvalidType {
+            path: chunkfile.chunkfile.to_string(),
+            expected: ChunkType::Image,
+            actual: chunkfile.chunk_type
+        });
+    }
+
     let image_path = chunkfile.chunkfile.clone();
     let vector = task::spawn_blocking(move || -> Result<Vec<f32>, EmbeddingError> {
         // Get session from pool inside the blocking task
@@ -56,7 +68,7 @@ pub async fn embed_chunk(chunkfile: ChunkFile) -> Result<Siglip2EmbeddedChunkFil
                 source: e.into(),
             })?
             .into_owned()
-            .into_shape_with_order((768,))
+            .into_shape_with_order((Siglip2EmbeddedChunkFile::VECTOR_LENGTH as usize,))
             .expect("Model should return a (1, 768) shaped array which should be able to be reshaped into a vector")
             .to_vec();
 
@@ -84,8 +96,8 @@ pub async fn embed_query(query: &str) -> Result<Vec<f32>, EmbeddingError> {
                 element: format!("Query: {}" , query_copy),
                 step: "tokenizing",
                 source: anyhow::anyhow!(e) })?;
-        let input_ids = encoding.get_ids().into_iter().map(|n| *n as i64).collect();
-        
+        let input_ids = encoding.get_ids().iter().map(|n| *n as i64).collect();
+
         let input = Array::from_vec(input_ids)
             .insert_axis(Axis(0));
 
@@ -109,7 +121,7 @@ pub async fn embed_query(query: &str) -> Result<Vec<f32>, EmbeddingError> {
                 source: e.into(),
             })?
             .into_owned()
-            .into_shape_with_order((768,))
+            .into_shape_with_order((Siglip2EmbeddedChunkFile::VECTOR_LENGTH as usize,))
             .expect("Model should return a (1, 768) shaped array which should be able to be reshaped into a vector")
             .to_vec();
         
@@ -127,8 +139,7 @@ pub async fn embed_query(query: &str) -> Result<Vec<f32>, EmbeddingError> {
 /// sessions::init_model_resource_directory must be called before this function or all models will be initialized
 /// from a binary relative models/ path
 pub fn init_indexing() {
-    // Instantiate and instantly drop the mutex guard to load the sessions
-    let _guard = IMAGE_SESSION_POOL.get_session();
+    LazyLock::force(&IMAGE_SESSION_POOL);
 }
 
 /// Init function that retrieves querying resources and then immediately drops them to initialize lazy cells
@@ -136,8 +147,7 @@ pub fn init_indexing() {
 /// sessions::init_model_resource_directory must be called before this function or all models will be initialized
 /// from a binary relative models/ path
 pub fn init_querying() {
-    // Instantiate and instantly drop the mutex guard to load the sessions
-    let _guard = TEXT_SESSION_POOL.get_session();
+    LazyLock::force(&TEXT_SESSION_POOL);
 }
 
 pub use integrations::*;

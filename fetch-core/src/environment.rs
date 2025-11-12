@@ -1,7 +1,15 @@
-use std::error::Error;
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use log::{error, info};
 use ort::execution_providers::*;
+
+use crate::index::{embedding::{embeddinggemma, siglip2}, provider::pdf::PDFIUM_LIB_PATH};
+
+pub fn init_pdfium(pdfium_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
+    PDFIUM_LIB_PATH.set(match pdfium_lib_path {
+        Some(path) => path.to_owned(),
+        None => Utf8PathBuf::from("./"),
+    }).map_err(|_| anyhow::anyhow!("PDFium library path has already been set"))
+}
 
 /// Initialize ONNX Runtime with optional library path
 ///
@@ -13,7 +21,7 @@ use ort::execution_providers::*;
 /// - Windows: onnxruntime.dll
 /// - Linux: libonnxruntime.so
 /// - macOS: libonnxruntime.dylib
-pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), Box<dyn Error>> {
+pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
     let mut execution_providers = vec![];
 
     #[cfg(feature = "qnn")]
@@ -72,7 +80,6 @@ pub fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), Box<dyn Error>> 
 
 // Re-export from session_pool
 pub use crate::index::embedding::sessions::init_model_resource_directory;
-use crate::index::embedding::siglip2_image_embedder;
 
 // TODO: implement functionality to init for specific models
 pub fn init_indexing(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
@@ -81,7 +88,8 @@ pub fn init_indexing(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
     }
 
     // do init for models
-    siglip2_image_embedder::init_indexing();
+    siglip2::init_indexing();
+    embeddinggemma::init();
 }
 pub fn init_querying(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
     if let Some(dir) = base_model_dir {
@@ -89,5 +97,6 @@ pub fn init_querying(base_model_dir: Option<&Utf8Path>, _models: Vec<&str>) {
     }
 
     // do init for models
-    siglip2_image_embedder::init_querying();
+    siglip2::init_querying();
+    embeddinggemma::init();
 }

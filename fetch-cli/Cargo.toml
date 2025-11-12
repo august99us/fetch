@@ -12,6 +12,10 @@ name = "fetch-query"
 path = "src/bin/query.rs"
 
 [[bin]]
+name = "fetch-query-by-file"
+path = "src/bin/query_by_file.rs"
+
+[[bin]]
 name = "fetch-drop"
 path = "src/bin/drop.rs"
 
@@ -29,6 +33,7 @@ fetch-core = { path = "../fetch-core" }
 
 anyhow = { workspace = true }
 camino = { workspace = true }
+chrono = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
@@ -41,3 +46,6 @@ normalize-path = "0.2.1"
 notify = "8.0.0"
 notify-debouncer-full = { version = "0.5.0", features = ["crossbeam-channel"] }
 tokio-util = "0.7.15"
+
+# Temporary for query-by-file
+serde_json = { workspace = true }

@@ -5,7 +5,7 @@
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import ReactiveBackgroundFetchQuery, { type ResolvedFileResult } from "$lib/structs/ReactiveBackgroundFetchQuery.svelte";
-    import SpinnerBar from "$lib/components/common/SpinnerBar.svelte";
+  import SpinnerBar from "$lib/components/common/SpinnerBar.svelte";
 
   let query = $state("");
   let fetchQuery = $state<ReactiveBackgroundFetchQuery | undefined>(undefined);

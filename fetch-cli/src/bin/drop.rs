@@ -7,7 +7,7 @@ use fetch_core::store::lancedb::drop;
 #[derive(Parser, Debug)]
 #[command(name = "fetch-drop")]
 #[command(author = "August Sun, august99us@gmail.com")]
-#[command(version = "0.1")]
+#[command(version = "0.0.2")]
 #[command(about = "drops entire database (development use)", long_about = None)]
 struct Args {
     // Does nothing currently

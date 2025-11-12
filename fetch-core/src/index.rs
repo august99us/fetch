@@ -1,5 +1,4 @@
-use async_trait::async_trait;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value};
 
@@ -20,45 +19,12 @@ pub struct ChunkFile {
     pub original_file_tags: Map<String, Value>,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ChunkType {
     Text,
     Image,
     Video,
     Audio,
-}
-
-#[async_trait]
-pub trait ChunkingIndexProvider: Send + Sync {
-    fn provides_indexing_for_extension(&self, ext: &str) -> bool;
-    async fn index(&self, path: &Utf8Path) -> Result<(), anyhow::Error>;
-    async fn clear(&self, path: &Utf8Path) -> Result<(), anyhow::Error>;
-    async fn query_n(&self, str: &str, num_results: u32, offset: u32) -> Result<Vec<ChunkQueryResult>, anyhow::Error>;
-}
-
-pub struct ChunkQueryResult {
-    chunkfile: ChunkFile,
-    /// Normalized score value, ascending order. Higher = more relevant
-    /// Implementers of ChunkingIndexProvider should target values between 0-100, but <100 is not guaranteed.
-    /// There will be no negative values.
-    score: f32,
-}
-
-impl ChunkQueryResult {
-    pub fn new(chunkfile: ChunkFile, score: f32) -> Self {
-        if score < 0.0 {
-            panic!("Attempted creating a chunkfile with score < 0!");
-        }
-
-        ChunkQueryResult { chunkfile, score }
-    }
-
-    pub fn chunkfile(&self) -> &ChunkFile {
-        &self.chunkfile
-    }
-
-    pub fn score(&self) -> f32 {
-        self.score
-    }
 }
 
 impl KeyedSequencedData<String> for ChunkFile {
@@ -80,7 +46,7 @@ impl KeyedSequencedData<String> for ChunkFile {
     }
 }
 
-pub mod basic_image_index_provider;
+pub mod provider;
 pub mod embedding;
 
 pub use integrations::*;

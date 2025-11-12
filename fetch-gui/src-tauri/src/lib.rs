@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use camino::Utf8PathBuf;
-use fetch_core::{init_indexing, init_ort, init_querying};
+use fetch_core::{init_indexing, init_ort, init_pdfium, init_querying};
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem}, tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent}, App, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent
 };
@@ -21,6 +21,10 @@ pub fn run() {
                     .expect("Failed to get resource directory"),
             )
             .expect("Resource directory path is not valid UTF-8");
+
+            // Initialize pdfium
+            println!("Initializing PDFium...");
+            init_pdfium(Some(&resource_dir)).expect("Failed initializing pdfium");
 
             // Initialize ort first
             println!("Initializing Onnx Runtime...");
@@ -57,8 +61,8 @@ pub fn run() {
             crate::commands::preview::preview,
             crate::commands::query::query,
         ])
-        .on_window_event(|window, event| match event {
-            WindowEvent::CloseRequested { api, .. } => {
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "full" {
                     // Hide the window instead of closing
                     window.hide().expect("Could not hide full search window");
@@ -66,7 +70,6 @@ pub fn run() {
                     api.prevent_close();
                 }
             }
-            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -189,9 +192,9 @@ fn summon_full_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>> 
         window.unminimize()?;
         window.show()?;
         window.set_focus()?;
-        return Ok(window);
+        Ok(window)
     } else {
-        return Ok(WebviewWindowBuilder::new(
+        Ok(WebviewWindowBuilder::new(
             app,
             "full",
             WebviewUrl::App("/search".into())
@@ -200,7 +203,7 @@ fn summon_full_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>> 
         .center()
         .focusable(true)
         .focused(true)
-        .build()?);
+        .build()?)
     }
 }
 
@@ -210,7 +213,7 @@ fn summon_quick_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>>
         window.center()?;
         window.show()?;
         window.set_focus()?;
-        return Ok(window);
+        Ok(window)
     } else {
         let mut builder = WebviewWindowBuilder::new(
             app,
@@ -236,7 +239,7 @@ fn summon_quick_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>>
             builder = builder.transparent(true);
         }
 
-        return Ok(builder.build()?);
+        Ok(builder.build()?)
     }
 }
 

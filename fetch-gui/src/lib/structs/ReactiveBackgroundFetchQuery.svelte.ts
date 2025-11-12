@@ -134,29 +134,28 @@ export default class ReactiveBackgroundFetchQuery {
 
     // Separate insertions and moves
     const insertions: FileResult[] = [];
-    const moves = new Map<number, number>(); // old_rank -> new_rank
+    const moved_results_by_old_rank = new Map<number, FileResult>(); // old_rank -> new_result
 
     for (const result of changedResults) {
       if (result.old_rank === null) {
         insertions.push(result);
       } else {
-        moves.set(result.old_rank, result.rank);
+        moved_results_by_old_rank.set(result.old_rank, result);
       }
     }
 
     // Process insertions, then remaining moves
     for (const insertion of insertions) {
-      placeItemAndResolveChain(fullResultsListCopy, insertion, moves);
+      placeItemAndResolveChain(fullResultsListCopy, insertion, moved_results_by_old_rank);
     }
 
-    while (moves.size > 0) {
-      const [[oldRank, rank]] = moves;
-      moves.delete(oldRank);
-      let displacedItem = displacedItemFromResult(fullResultsListCopy[oldRank - 1], rank);
+    while (moved_results_by_old_rank.size > 0) {
+      const [[oldRank, result]] = moved_results_by_old_rank;
+      moved_results_by_old_rank.delete(oldRank);
       // delete the item at the index, leaving an empty slot that returns
       // false for the (index in array) operation
       delete fullResultsListCopy[oldRank - 1];
-      placeItemAndResolveChain(fullResultsListCopy, displacedItem, moves);
+      placeItemAndResolveChain(fullResultsListCopy, result, moved_results_by_old_rank);
     }
 
     this.fullResultsList = fullResultsListCopy;
@@ -167,13 +166,13 @@ export default class ReactiveBackgroundFetchQuery {
 function placeItemAndResolveChain(
   resultsList: ResolvedFileResult[],
   item: FileResult,
-  moves: Map<number, number>
+  moved_results_by_old_rank: Map<number, FileResult>
 ) {
   let current: FileResult | undefined = item;
 
   while (current) {
-    const targetIndex = current.rank - 1;
-    const displaced = resultsList[targetIndex];
+    const targetIndex: number = current.rank - 1;
+    const displaced: ResolvedFileResult | undefined = resultsList[targetIndex];
 
     resultsList[targetIndex] = {
       rank: current.rank,
@@ -182,20 +181,12 @@ function placeItemAndResolveChain(
       score: current.score,
     };
 
-    const nextRank = displaced && moves.get(displaced.rank);
-    if (nextRank) {
-      moves.delete(displaced.rank);
-      current = displacedItemFromResult(displaced, nextRank)
+    const nextResult: FileResult | undefined = displaced && moved_results_by_old_rank.get(displaced.rank);
+    if (nextResult) {
+      moved_results_by_old_rank.delete(displaced.rank);
+      current = nextResult;
     } else {
       current = undefined;
     }
-  }
-}
-
-function displacedItemFromResult(displacedResult: ResolvedFileResult, newRank: number): FileResult {
-  return {
-    ...displacedResult,
-    old_rank: displacedResult.rank,
-    rank: newRank,
   }
 }

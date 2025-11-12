@@ -1,13 +1,13 @@
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
-use fetch_core::{app_config, init_ort, file_index::{query_files::{QueryFiles, QueryResult}, FileQueryer, pagination::QueryCursor}, index::basic_image_index_provider::BasicImageIndexProvider, store::lancedb::LanceDBStore};
+use fetch_core::{app_config, files::{FileQueryer, pagination::QueryCursor, query::{QueryFiles, QueryResult}}, index::provider::{image::ImageIndexProvider, pdf::PdfIndexProvider}, init_ort, store::lancedb::LanceDBStore};
 
 #[derive(Parser, Debug)]
 #[command(name = "fetch-query")]
 #[command(author = "August Sun, august99us@gmail.com")]
-#[command(version = "0.1")]
+#[command(version = "0.0.2")]
 #[command(about = "queries semantic file index with a query string", long_about = None)]
 struct Args {
     /// Verbose mode
@@ -33,22 +33,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let data_dir = app_config::get_default_index_directory();
 
     // Create the image index store
-    let siglip_store = LanceDBStore::local_full(
+    let siglip_store = Arc::new(LanceDBStore::local_full(
         data_dir.as_str(),
         "siglip2_chunkfile".to_owned()
     ).await
-    .unwrap_or_else(|e| panic!("Could not open lancedb store for image index with data dir: {}. Error: {e:?}", data_dir.as_str()));
+    .unwrap_or_else(|e| 
+        panic!("Could not open lancedb store for image index with data dir: {}. Error: {e:?}",
+        data_dir.as_str())));
+    
+    // Create the pdf index store
+    let gemma_store = Arc::new(LanceDBStore::local_full(
+        data_dir.as_str(),
+        "gemma_chunkfile".to_owned()
+    ).await
+    .unwrap_or_else(|e| 
+        panic!("Could not open lancedb store for pdf index with data dir: {}. Error: {e:?}",
+        data_dir.as_str())));
 
     // Create the cursor store
     let cursor_store = LanceDBStore::<QueryCursor>::local(
         data_dir.as_str(),
         "cursor".to_owned()
     ).await
-    .unwrap_or_else(|e| panic!("Could not open lancedb store for cursors with data dir: {}. Error: {e:?}", data_dir.as_str()));
+    .unwrap_or_else(|e|
+        panic!("Could not open lancedb store for cursors with data dir: {}. Error: {e:?}",
+        data_dir.as_str()));
 
     // Create index provider and file queryer
-    let basic_image = BasicImageIndexProvider::using(siglip_store);
-    let file_queryer = FileQueryer::with(vec![std::sync::Arc::new(basic_image)], cursor_store);
+    let basic_image = ImageIndexProvider::using(siglip_store.clone());
+    let pdf = PdfIndexProvider::using(gemma_store, siglip_store);
+    let file_queryer = FileQueryer::with(vec![Arc::new(basic_image), Arc::new(pdf)], cursor_store);
 
     println!("Querying file index at {} with query: \"{}\"", data_dir.as_str(), args.query);
 

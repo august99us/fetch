@@ -1,7 +1,8 @@
 use std::{collections::HashSet, error::Error};
 
 use camino::Utf8PathBuf;
-use fetch_core::file_index::index_files::IndexFiles;
+use chrono::Utc;
+use fetch_core::files::index::IndexFiles;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -24,7 +25,7 @@ pub struct Log {
 pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     let file_indexer = get_file_indexer().await?;
 
-    let utf8_paths: Vec<Utf8PathBuf> = paths.into_iter().map(|p| Utf8PathBuf::from(p)).collect();
+    let utf8_paths: Vec<Utf8PathBuf> = paths.into_iter().map(Utf8PathBuf::from).collect();
     let unique_files = explore_paths(utf8_paths);
 
     let num_files = unique_files.len();
@@ -37,7 +38,7 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
         },
     )
     .unwrap_or_else(|e: tauri::Error| {
-        eprintln!("Could not emit progress event: {}", e.to_string())
+        eprintln!("Could not emit progress event: {}", e)
     });
 
     for (i, path) in unique_files.iter().map(Utf8PathBuf::as_path).enumerate() {
@@ -48,9 +49,9 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
                 message: format!("Indexing file: {}", path),
             },
         )
-        .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
+        .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
 
-        file_indexer.index(path).await.map_err(|e| {
+        file_indexer.index(path, Some(Utc::now())).await.map_err(|e| {
             format!(
                 "Error while indexing files: {}, source: {}",
                 e,
@@ -69,7 +70,7 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
             },
         )
         .unwrap_or_else(|e: tauri::Error| {
-            eprintln!("Could not emit progress event: {}", e.to_string())
+            eprintln!("Could not emit progress event: {}", e)
         });
     }
 
@@ -77,10 +78,10 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
         "full",
         LOG_EVENT_IDENTIFIER,
         Log {
-            message: format!("All done! Goodbye."),
+            message: "All done! Goodbye.".to_string(),
         },
     )
-    .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e.to_string()));
+    .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
 
     Ok(())
 }
@@ -95,8 +96,8 @@ fn explore_paths(paths: Vec<Utf8PathBuf>) -> Vec<Utf8PathBuf> {
     let mut queue = paths;
     while let Some(path) = queue.pop() {
         if seen.contains(&path) {
-            eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular 
-                directory structure somewhere? Folder: {}", path.to_string());
+            eprintln!("Warning: Circled back to folder that was already seen before. Maybe there is a symlink creating a circular
+                directory structure somewhere? Folder: {}", path);
             continue;
         }
 
@@ -105,7 +106,7 @@ fn explore_paths(paths: Vec<Utf8PathBuf>) -> Vec<Utf8PathBuf> {
         } else if path.is_dir() {
             for entry_result in path
                 .read_dir()
-                .unwrap_or_else(|_| panic!("failed reading directory: {}", path.to_string()))
+                .unwrap_or_else(|_| panic!("failed reading directory: {}", path))
             {
                 match entry_result {
                     Ok(entry) => {
@@ -127,7 +128,7 @@ fn explore_paths(paths: Vec<Utf8PathBuf>) -> Vec<Utf8PathBuf> {
         } else {
             println!(
                 "Warning: path is neither a file nor a directory, ignoring: {}",
-                path.to_string()
+                path
             );
         }
         seen.insert(path);

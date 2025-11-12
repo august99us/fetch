@@ -2,9 +2,9 @@ use std::{cmp::Ordering, collections::HashMap, future::Future};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::Utc;
-use log::debug;
+use log::{debug, warn};
 
-use crate::{file_index::pagination::{AggregateFileScore, QueryCursor, TTL_ATTR}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedStore}};
+use crate::{files::{ChunkingIndexProviderConcurrent, pagination::{AggregateFileScore, QueryCursor, TTL_ATTR}}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedStore}};
 
 use super::FileQueryer;
 
@@ -110,14 +110,12 @@ where
             let o_cursor = self.cursor_store.get(cur_id.to_string()).await
                 .map_err(|e| FileQueryingError {
                     query: query_terms.to_owned(),
-                    source: e.into(),
-                    r#type: FileQueryingErrorType::CursorStore,
+                    r#type: FileQueryingErrorType::CursorStore { source: e.into() },
                 })?;
             if o_cursor.is_none() {
                 return Err(FileQueryingError {
                     query: query_terms.to_owned(),
-                    source: anyhow::Error::msg("cursor not found"),
-                    r#type: FileQueryingErrorType::CursorNotFound
+                    r#type: FileQueryingErrorType::CursorNotFound,
                 });
             }
             cursor = o_cursor.unwrap();
@@ -128,15 +126,14 @@ where
 
         // clear ttl (TODO: Build a database interface that supports automatically clearing ttl)
         debug!("FileQueryer: Clearing expired cursors from cursor store using clear_filter and ttl field");
-        self.cursor_store.clear_filter(vec![Filter {
+        self.cursor_store.clear_filter(&[Filter {
             attribute: TTL_ATTR,
             filter: FilterValue::DateTime(&Utc::now()),
             relation: FilterRelation::Lt
         }]).await
             .map_err(|e| FileQueryingError {
                 query: query_terms.to_owned(),
-                source: e.into(),
-                r#type: FileQueryingErrorType::CursorStore,
+                r#type: FileQueryingErrorType::CursorStore { source: e.into() },
             })?;
 
         let old_hash = cursor.aggregate_scores.clone();
@@ -144,20 +141,45 @@ where
         let original_len = cursor.aggregate_scores.len() as u32;
 
         debug!("FileQueryer: Performing provider queries for query: {}", query_terms);
+        let query_copy = query_terms.to_owned();
+        let results = self.index_providers.distribute_calls(async move |p| {
+            p.query_n(&query_copy, num_chunks, cursor.curr_offset).await
+        }).await.map_err(|e| FileQueryingError {
+            query: query_terms.to_owned(),
+            r#type: FileQueryingErrorType::Other {
+                msg: "Join error occurred while querying indexes",
+                source: e,
+            },
+        })?;
         let mut has_results = false;
-        for provider in &self.index_providers {
-            let results = provider.query_n(query_terms, num_chunks, cursor.curr_offset).await
-                .map_err(|e| FileQueryingError {
-                    query: query_terms.to_owned(),
-                    source: e.into(),
-                    r#type: FileQueryingErrorType::IndexProvider,
-                })?;
-            if !results.is_empty() {
-                has_results = true;
+        let mut provider_error_map = HashMap::new();
+        for res in results {
+            match res {
+                Ok(vec) => {
+                    if !vec.is_empty() {
+                        has_results = true;
 
-                for result in results {
-                    cursor.aggregate_chunk(&result.chunkfile().original_file, result.score());
+                        for cqr in vec {
+                            cursor.aggregate_chunk(&cqr.chunkfile().original_file, cqr.score());
+                        }
+                    }
+                },
+                Err(e) => {
+                    let provider_name = e.provider_name.clone();
+                    provider_error_map.insert(provider_name, e);
                 }
+            }
+        }
+        if !provider_error_map.is_empty() {
+            if provider_error_map.len() == self.index_providers.len() {
+                debug!("FileQueryer: All index providers returned errors for query: {}", query_terms);
+                return Err(FileQueryingError {
+                    query: query_terms.to_owned(),
+                    r#type: FileQueryingErrorType::IndexProviders { provider_errors: provider_error_map },
+                });
+            } else {
+                warn!("FileQueryer: Some index providers returned errors for query: {}. Ignoring \
+                    to allow other providers to return results", query_terms);
             }
         }
         
@@ -180,12 +202,12 @@ where
         for (rank, entry) in new_list.iter().enumerate() {
             let rank = (rank + 1) as u32;
             let res_path = entry.0.as_path();
-            let score = entry.1.max_score;
+            let score = entry.1.chunk_multiplier_score();
             let old_rank_opt = rankmap.get(res_path);
             if let Some(old_rank) = old_rank_opt {
                 let old_score = old_hash.get(res_path)
                     .expect("result exists in old rank map but not in hash map, should not happen")
-                    .max_score;
+                    .chunk_multiplier_score();
 
                 if *old_rank == rank && old_score == score {
                     continue;
@@ -213,8 +235,7 @@ where
         self.cursor_store.put(vec![cursor]).await
             .map_err(|e| FileQueryingError {
                 query: query_terms.to_owned(),
-                source: e.into(),
-                r#type: FileQueryingErrorType::CursorStore,
+                r#type: FileQueryingErrorType::CursorStore { source: e.into() },
             })?;
 
         Ok(FileQueryingResult {
@@ -246,8 +267,8 @@ fn cmp_score_entries_desc(
     r: &(impl AsRef<Utf8Path>, impl AsRef<AggregateFileScore>)
 ) -> Ordering {
     // r.compare(l) to reverse ordering for descending
-    let cmp = (r.1.as_ref().max_score * chunks_multiplier(r.1.as_ref().num_chunks))
-        .total_cmp(&(l.1.as_ref().max_score * chunks_multiplier(l.1.as_ref().num_chunks)));
+    let cmp = (r.1.as_ref().chunk_multiplier_score())
+        .total_cmp(&(l.1.as_ref().chunk_multiplier_score()));
 
     if cmp.is_eq() {
         // If scores are equal, then just return the ordering of the filenames instead
@@ -255,11 +276,6 @@ fn cmp_score_entries_desc(
     } else {
         cmp
     }
-}
-
-fn chunks_multiplier(num_chunks: u32) -> f32 {
-    // this cast loses precision (gaps between possible integer values) after 2^24
-    1.0 + (0.01 * num_chunks as f32)
 }
 
 mod result;

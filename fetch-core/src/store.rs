@@ -72,12 +72,12 @@ pub enum FilterValue<'a> {
 }
 
 pub trait ClearByFilter<D: Filterable> {
-    fn clear_filter<'a>(&self, filters: Vec<Filter<'a>>) -> impl Future<Output = Result<(), FilterStoreError>> + Send;
+    fn clear_filter<'a>(&self, filters: &[Filter<'a>]) -> impl Future<Output = Result<(), FilterStoreError>> + Send;
 }
 
 pub trait QueryByFilter<D: Filterable> {
-    fn query_filter<'a>(&self, filters: Vec<Filter<'a>>) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> + Send;
-    fn query_filter_n<'a>(&self, filters: Vec<Filter<'a>>, num_results: u32, offset: u32) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> + Send;
+    fn query_filter<'a>(&self, filters: &[Filter<'a>]) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> + Send;
+    fn query_filter_n<'a>(&self, filters: &[Filter<'a>], num_results: u32, offset: u32) -> impl Future<Output = Result<Vec<D>, FilterStoreError>> + Send;
 }
 
 // Vector traits
@@ -121,13 +121,13 @@ pub trait FTSData {
 }
 
 pub trait QueryFull<D: VectorData + Filterable + FTSData> {
-    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: Vec<Filter<'a>>) -> 
+    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: &[Filter<'a>]) -> 
         impl Future<Output = Result<Vec<FullQueryResult<D>>, anyhow::Error>> + Send;
     fn query_full_n<'a>(
         &self,
         vector: Vec<f32>,
         fts_terms: Option<&str>,
-        filters: Vec<Filter<'a>>,
+        filters: &[Filter<'a>],
         num_results: u32,
         offset: u32,
     ) -> impl Future<Output = Result<Vec<FullQueryResult<D>>, anyhow::Error>> + Send;
