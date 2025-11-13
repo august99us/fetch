@@ -5,7 +5,7 @@ use arrow_array::{Array, ArrayRef, Float32Array, RecordBatch, RecordBatchIterato
 use arrow_schema::{DataType, Field, Schema};
 use futures::stream::StreamExt;
 use lancedb::{Connection, DistanceType, Table, connect, database::CreateTableMode, index::{Index, scalar::{FtsQuery, FullTextSearchQuery, MultiMatchQuery}}, query::{ExecutableQuery, Query, QueryBase, QueryExecutionOptions, VectorQuery}, rerankers::{Reranker, rrf::RRFReranker}, table::OptimizeAction};
-use log::{debug, info};
+use log::info;
 use serde::Serialize;
 
 use crate::store::{ClearByFilter, FTSData, Filter, FilterRelation, FilterStoreError, FilterValue, Filterable, FullQueryResult, KeyedSequencedData, KeyedSequencedStore, KeyedSequencedStoreError, QueryByFilter, QueryByVector, QueryFull, VectorData, VectorQueryResult, VectorStoreError};

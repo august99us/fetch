@@ -71,7 +71,7 @@ pub trait QueryFiles {
     /// Returns the new list length and the change in results for the aggregating cursor.
     /// If no cursor id is returned in the results, then that means the end of the list of chunks has
     /// been reached.
-    async fn query(&self, query_terms: &str, cursor_id: Option<&str>) -> Result<FileQueryingResult, FileQueryingError>;
+    fn query(&self, query_terms: &str, cursor_id: Option<&str>) -> impl Future<Output = Result<FileQueryingResult, FileQueryingError>> + Send;
     
     /// Query for files matching description provided, parsing through a given number of chunks
     /// per query and aggregating them into the cursor. This API will only return new results not
@@ -87,7 +87,7 @@ pub trait QueryFiles {
     /// Returns the new list length and the change in results for the aggregating cursor.
     /// If no cursor id is returned in the results, then that means the end of the list of chunks has
     /// been reached.
-    async fn query_n(&self, query_terms: &str, num_chunks: u32, cursor_id: Option<&str>) -> Result<FileQueryingResult, FileQueryingError>;
+    fn query_n(&self, query_terms: &str, num_chunks: u32, cursor_id: Option<&str>) -> impl Future<Output = Result<FileQueryingResult, FileQueryingError>> + Send;
 }
 
 impl<C> QueryFiles for FileQueryer<C>

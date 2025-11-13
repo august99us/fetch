@@ -1,5 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
 use tauri_build::Attributes;
 
 fn main() {

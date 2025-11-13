@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{future::Future, time::SystemTime};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -48,7 +48,7 @@ pub trait PossiblyPreviewable {
     /// * `Ok(Some(PreviewedFile))` - A preview was successfully generated
     /// * `Ok(None)` - No preview could be generated (unsupported file type)
     /// * `Err(PreviewError)` - An error occurred during preview generation
-    async fn preview(&self) -> Result<Option<PreviewedFile>, PreviewError>;
+    fn preview(&self) -> impl Future<Output = Result<Option<PreviewedFile>, PreviewError>> + Send;
 }
 
 /// Errors that can occur during preview generation.
