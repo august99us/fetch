@@ -545,7 +545,7 @@ fn extract_from_tar_gz(tar_gz_path: &Path, output_dir: &Path, lib_patterns: &[&s
         // Check if this is a library we want
         let should_extract = lib_patterns
             .iter()
-            .any(|pattern| file_name == *pattern || file_name.starts_with(pattern));
+            .any(|pattern| file_name == *pattern || file_name.ends_with(pattern));
 
         if should_extract {
             let output_path = output_dir.join(file_name);

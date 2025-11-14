@@ -45,11 +45,11 @@ jobs:
       run: cargo build --verbose
 
     - name: Install frontend dependencies
-      working-directory: fetch
+      working-directory: fetch-tauri
       run: npm install
 
     - name: Build Tauri GUI (no bundling or debug)
-      working-directory: fetch
+      working-directory: fetch-tauri
       run: npm run tauri build -- --no-bundle --debug
 
     - name: Run tests

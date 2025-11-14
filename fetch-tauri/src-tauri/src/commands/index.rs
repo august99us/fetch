@@ -57,18 +57,25 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
         )
         .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
 
-        file_indexer
-            .index(path, Some(Utc::now()))
-            .await
-            .map_err(|e| {
-                format!(
-                    "Error while indexing files: {}, source: {}",
-                    e,
-                    e.source()
-                        .map(<dyn Error>::to_string)
-                        .unwrap_or("".to_string())
+        match file_indexer.index(path, Some(Utc::now())).await {
+            Ok(_) => {},
+            Err(e) => {
+                app.emit_to(
+                    "full",
+                    LOG_EVENT_IDENTIFIER,
+                    Log {
+                        message: format!(
+                            "Error while indexing files: {}, source: {}\nContinuing...",
+                            e,
+                            e.source()
+                                .map(<dyn Error>::to_string)
+                                .unwrap_or("".to_string())
+                        )
+                    },
                 )
-            })?;
+                .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
+            },
+        }
 
         app.emit_to(
             "full",
