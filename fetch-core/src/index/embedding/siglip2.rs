@@ -51,7 +51,7 @@ pub async fn embed_chunk(chunkfile: ChunkFile) -> Result<Siglip2EmbeddedChunkFil
 
         // embed image
         let result = model.run(inputs![
-                "input" => TensorRef::from_array_view(&input)
+                "pixel_values" => TensorRef::from_array_view(&input)
                     .map_err(|e| EmbeddingError::Preprocessing { 
                         element: image_path.to_string(), 
                         step: "Converting to tensor", 
@@ -60,8 +60,8 @@ pub async fn embed_chunk(chunkfile: ChunkFile) -> Result<Siglip2EmbeddedChunkFil
             ])
             .map_err(|e| EmbeddingError::Calculation { element: image_path.to_string(),
                 step: "Performing image embedding", source: e.into() })?
-            .get("output")
-            .expect("model should place output in 'output' key")
+            .get("pooler_output")
+            .expect("model should place output in 'pooler_output' key")
             .try_extract_array::<f32>()
             .map_err(|e| EmbeddingError::Unknown {
                 msg: "Error while extracting array from output as f32",
@@ -102,7 +102,7 @@ pub async fn embed_query(query: &str) -> Result<Vec<f32>, EmbeddingError> {
             .insert_axis(Axis(0));
 
         let result = model.run(inputs![
-                "input" => TensorRef::from_array_view(&input)
+                "input_ids" => TensorRef::from_array_view(&input)
                     .map_err(|e| EmbeddingError::Preprocessing { 
                         element: format!("Query: {}" , query_copy),
                         step: "Converting to tensor", 
@@ -113,8 +113,8 @@ pub async fn embed_query(query: &str) -> Result<Vec<f32>, EmbeddingError> {
                 element: format!("Query: {}" , query_copy),
                 step: "Performing text embedding", source: e.into()
             })?
-            .get("output")
-            .expect("model should place output in 'output' key")
+            .get("pooler_output")
+            .expect("model should place output in 'pooler_output' key")
             .try_extract_array::<f32>()
             .map_err(|e| EmbeddingError::Unknown {
                 msg: "Error while extracting array from output as f32",
@@ -154,8 +154,8 @@ pub use integrations::*;
 
 // Private functions and variables
 
-const IMAGE_MODEL_PATH: &str = "siglip2-base-patch16-512/image_embedder.onnx";
-const TEXT_MODEL_PATH: &str = "siglip2-base-patch16-512/text_embedder.onnx";
+const IMAGE_MODEL_PATH: &str = "siglip2-base-patch16-512/vision_model.onnx";
+const TEXT_MODEL_PATH: &str = "siglip2-base-patch16-512/text_model.onnx";
 const TOKENIZER_PATH: &str = "siglip2-base-patch16-512/tokenizer.json";
 
 static IMAGE_SESSION_POOL: LazyLock<SessionPool> = LazyLock::new(|| {

@@ -74,13 +74,13 @@
       indexing = false;
       progressCurrent = 0;
       progressTotal = 0;
-      logs = [];
       await unlistenEvents();
     }
     ontoggle?.(isOpen);
   }
 
   async function handleIndex() {
+    logs = [];
     indexing = true;
     try {
       await invoke('index', { paths: stagedPaths });

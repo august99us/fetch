@@ -18,7 +18,9 @@ impl AggregateFileScore {
     }
 
     pub fn chunk_multiplier_score(&self) -> f32 {
-        self.max_score * 1.0 + (0.01 * self.num_chunks as f32)
+        self.max_score
+        // TODO: tune this chunk boosted score better.
+        // self.max_score * 1.0 + (0.01 * self.num_chunks as f32)
     }
 }
 

@@ -26,6 +26,14 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     let file_indexer = get_file_indexer().await?;
 
     let utf8_paths: Vec<Utf8PathBuf> = paths.into_iter().map(Utf8PathBuf::from).collect();
+    app.emit_to(
+        "full",
+        LOG_EVENT_IDENTIFIER,
+        Log {
+            message: format!("Exploring paths to find files to index..."),
+        },
+    )
+    .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
     let unique_files = explore_paths(utf8_paths);
 
     let num_files = unique_files.len();

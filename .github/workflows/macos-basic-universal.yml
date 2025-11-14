@@ -52,17 +52,17 @@ jobs:
         echo "ONNX_BUILD_PATH=$LIB_PATH" >> $GITHUB_ENV
 
     - name: Install frontend dependencies
-      working-directory: fetch-gui
+      working-directory: fetch
       run: npm install
 
     - name: Build Tauri application (Basic - Universal)
-      working-directory: fetch-gui
+      working-directory: fetch
       run: npm run tauri build -- --target universal-apple-darwin
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: fetch-gui-macos-basic-universal
+        name: fetch-macos-basic-universal
         path: |
           target/universal-apple-darwin/release/bundle/
         retention-days: 7

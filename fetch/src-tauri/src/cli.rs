@@ -1,15 +1,20 @@
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashMap, error::Error, path::PathBuf};
 
 use fetch_cli::{drop::DropArgs, index::IndexArgs, query::QueryArgs, query_by_file::QueryByFileArgs};
 use tauri::AppHandle;
-use tauri_plugin_cli::CliExt;
+use tauri_plugin_cli::{ArgData, CliExt};
 
-pub fn intercept_cli_command(app_handle: &AppHandle) {
+/// Checks to see if we are running a CLI program, then executes it if so. Returns
+/// true if CLI command was detected.
+pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
+    println!("Intercepting CLI command...");
     if let Ok(matches) = app_handle.cli().matches() {
+        check_help_and_maybe_exit(app_handle, &matches.args);
         if let Some(subcommand) = matches.subcommand {
             let rt = tokio::runtime::Runtime::new().expect("Unable to create runtime");
             let result: Result<(), Box<dyn Error>> = rt.block_on(async move {
                 let sc_args = subcommand.matches.args;
+                check_help_and_maybe_exit(app_handle, &sc_args);
                 match subcommand.name.as_str() {
                     "drop" => {
                         let args = DropArgs {
@@ -105,7 +110,7 @@ pub fn intercept_cli_command(app_handle: &AppHandle) {
 
                         fetch_cli::query_by_file::query_by_file(args).await?;
                     },
-                    _ => unreachable!("Invalid cli subcommand name should not be possible with tauri cli"),
+                    _ => panic!("Invalid cli subcommand name"),
                 }
                 
                 Ok(())
@@ -118,6 +123,17 @@ pub fn intercept_cli_command(app_handle: &AppHandle) {
                     app_handle.exit(1);
                 },
             }
+
+            return true;
         }
+    }
+
+    return false;
+}
+
+fn check_help_and_maybe_exit(app_handle: &AppHandle, args: &HashMap<String, ArgData>) {
+    if let Some(message) = args.get("help") {
+        println!("{}", message.value.as_str().unwrap());
+        app_handle.exit(0);
     }
 }

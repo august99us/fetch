@@ -69,17 +69,17 @@ jobs:
         }
 
     - name: Install frontend dependencies
-      working-directory: fetch-gui
+      working-directory: fetch
       run: npm install
 
     - name: Build Tauri application (Full - ${{ inputs.architecture }})
-      working-directory: fetch-gui
+      working-directory: fetch
       run: npm run tauri build -- --features cuda
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: fetch-gui-windows-full-${{ inputs.architecture }}
+        name: fetch-windows-full-${{ inputs.architecture }}
         path: |
           target/release/bundle/
         retention-days: 7

@@ -29,25 +29,30 @@ fn main() {
         }
     }
 
-    match download_hf_model(
-        "siglip2-base-patch16-512", 
-        "august99us/siglip2-base-patch16-512-fetch", 
-        &models_folder
-    ) {
-        Ok(_) => {},
-        Err(e) => {
-            println!("cargo:error=Failed to load siglip2 model files: {}", e);
+    // disable model downloading for windows because it increases the size of the bundle
+    // too much for light.exe to handle. models for windows must be packaged separately
+    #[cfg(not(target_os = "windows"))]
+    {
+        match download_hf_model(
+            "siglip2-base-patch16-512", 
+            "august99us/siglip2-base-patch16-512-fetch", 
+            &models_folder
+        ) {
+            Ok(_) => {},
+            Err(e) => {
+                println!("cargo:error=Failed to load siglip2 model files: {}", e);
+            }
         }
-    }
 
-    match download_hf_model(
-        "embeddinggemma-300m",
-        "august99us/embeddinggemma-300m-fetch",
-        &models_folder
-    ) {
-        Ok(_) => {},
-        Err(e) => {
-            println!("cargo:error=Failed to load embeddinggemma model files: {}", e);
+        match download_hf_model(
+            "embeddinggemma-300m",
+            "august99us/embeddinggemma-300m-fetch",
+            &models_folder
+        ) {
+            Ok(_) => {},
+            Err(e) => {
+                println!("cargo:error=Failed to load embeddinggemma model files: {}", e);
+            }
         }
     }
 }

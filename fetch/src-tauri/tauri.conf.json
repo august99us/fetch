@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "fetch-gui",
+  "productName": "fetch",
   "version": "0.0.2",
-  "identifier": "com.sparrow.fetch-gui",
+  "identifier": "com.sparrow.fetch",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -10,18 +10,6 @@
     "frontendDist": "../build"
   },
   "app": {
-    "windows": [
-      {
-        "label": "full",
-        "url": "/search",
-        "title": "Fetch",
-        "width": 1200,
-        "height": 900,
-        "resizable": true,
-        "focusable": true,
-        "center": true
-      }
-    ],
     "security": {
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost",
       "assetProtocol": {

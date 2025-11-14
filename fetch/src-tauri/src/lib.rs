@@ -35,27 +35,35 @@ pub fn run() {
             init_resources(Some(&resource_dir))
                 .unwrap_or_else(|e| panic!("Error while initializing resources: {:?}", e));
 
+            #[allow(unused_assignments)]
+            let mut continue_execution = true;
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            cli::intercept_cli_command(app.handle());
+            {
+                continue_execution = !cli::intercept_cli_command(app.handle());
+            }
 
-            // Set the resource directory with the first init call
-            println!("Warming up indexing model...");
-            // TODO: update once warming models api is finalized
-            init_indexing(vec![]);
-            // Second call doesn't need to set it again since fetch-core defines this as static setup
-            println!("Warming up querying model...");
-            init_querying(vec![]);
+            if continue_execution {
+                // Set the resource directory with the first init call
+                println!("Warming up indexing model...");
+                // TODO: update once warming models api is finalized
+                init_indexing(vec![]);
+                // Second call doesn't need to set it again since fetch-core defines this as static setup
+                println!("Warming up querying model...");
+                init_querying(vec![]);
 
-            // Initialize system tray functionality
-            println!("Building tray...");
-            let _tray = build_tray(app)?;
+                // Initialize system tray functionality
+                println!("Building tray...");
+                let _tray = build_tray(app)?;
 
-            // Register global shortcuts
-            println!("Registering global shortcuts...");
-            register_shortcuts(app.handle())?;
+                // Register global shortcuts
+                println!("Registering global shortcuts...");
+                register_shortcuts(app.handle())?;
 
-            // Uncomment to test quick window
-            //summon_quick_window(app.handle())?;
+                // Uncomment to test quick window
+                //summon_quick_window(app.handle())?;
+
+                summon_full_window(app.handle())?;
+            }
 
             Ok(())
         })
@@ -205,6 +213,8 @@ fn summon_full_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn Error>> 
     } else {
         Ok(
             WebviewWindowBuilder::new(app, "full", WebviewUrl::App("/search".into()))
+                .title("Fetch")
+                .inner_size(1200.0, 900.0)
                 .resizable(true)
                 .center()
                 .focusable(true)

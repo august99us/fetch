@@ -2969,6 +2969,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fetch"
+version = "0.0.2"
+dependencies = [
+ "camino",
+ "chrono",
+ "env_logger",
+ "fetch-cli",
+ "fetch-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-cli",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tokio",
+]
+
+[[package]]
 name = "fetch-cli"
 version = "0.0.2"
 dependencies = [
@@ -3023,25 +3042,6 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zip",
-]
-
-[[package]]
-name = "fetch-gui"
-version = "0.0.2"
-dependencies = [
- "camino",
- "chrono",
- "env_logger",
- "fetch-cli",
- "fetch-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-cli",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tokio",
 ]
 
 [[package]]

@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    fetch_gui_lib::run()
+    fetch_lib::run()
 }

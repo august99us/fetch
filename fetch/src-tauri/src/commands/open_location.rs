@@ -21,7 +21,7 @@ pub async fn open_location(path: &str) -> Result<(), String> {
 
 fn show_file_location(path: &Utf8Path) -> Result<(), Box<dyn Error>> {
     #[cfg(target_os = "windows")]
-    let res = Command::new("explorer.exe")
+    Command::new("explorer.exe")
         .raw_arg(format!("/select,{}", path.to_string()))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -29,7 +29,7 @@ fn show_file_location(path: &Utf8Path) -> Result<(), Box<dyn Error>> {
         .spawn()?;
 
     #[cfg(target_os = "macos")]
-    let res = Command::new("open")
+    Command::new("open")
         .arg("-R")
         .arg(path)
         .stdin(Stdio::null())
