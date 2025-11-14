@@ -1,0 +1,98 @@
+name: 'Package Windows MSI with Models'
+description: 'Downloads models from Hugging Face and packages them with the MSI installer'
+inputs:
+  package-name:
+    description: 'Name for the output zip file (e.g., fetch-windows-basic-x64)'
+    required: true
+outputs:
+  zip-path:
+    description: 'Path to the created zip file'
+    value: ${{ steps.package.outputs.zip-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download models from Hugging Face
+      shell: pwsh
+      run: |
+        Write-Host "Downloading models from Hugging Face..."
+
+        $modelsDir = "models"
+        New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+
+        # Function to download a Hugging Face model
+        function Download-HFModel {
+            param($ModelName, $RepoId, $OutputDir)
+
+            $modelPath = Join-Path $OutputDir $ModelName
+
+            if (Test-Path $modelPath) {
+                Write-Host "$ModelName already exists, skipping download"
+                return
+            }
+
+            Write-Host "Fetching model info for $RepoId..."
+            $apiUrl = "https://huggingface.co/api/models/$RepoId"
+            $modelInfo = Invoke-RestMethod -Uri $apiUrl
+
+            New-Item -ItemType Directory -Force -Path $modelPath | Out-Null
+
+            foreach ($file in $modelInfo.siblings) {
+                $fileName = $file.rfilename
+                $fileUrl = "https://huggingface.co/$RepoId/resolve/main/$fileName"
+                $destPath = Join-Path $modelPath $fileName
+
+                # Create parent directories if needed
+                $parentDir = Split-Path -Parent $destPath
+                if ($parentDir -and !(Test-Path $parentDir)) {
+                    New-Item -ItemType Directory -Force -Path $parentDir | Out-Null
+                }
+
+                Write-Host "Downloading $fileName..."
+                Invoke-WebRequest -Uri $fileUrl -OutFile $destPath
+            }
+
+            Write-Host "Completed download of $ModelName"
+        }
+
+        # Download both models
+        Download-HFModel -ModelName "siglip2-base-patch16-512" -RepoId "august99us/siglip2-base-patch16-512-fetch" -OutputDir $modelsDir
+        Download-HFModel -ModelName "embeddinggemma-300m" -RepoId "august99us/embeddinggemma-300m-fetch" -OutputDir $modelsDir
+
+        Write-Host "All models downloaded successfully"
+
+    - name: Package MSI with models
+      id: package
+      shell: pwsh
+      run: |
+        Write-Host "Packaging MSI with models folder..."
+
+        # Find the MSI file
+        $msiFile = Get-ChildItem -Path "target/release/bundle/msi" -Filter "*.msi" -Recurse | Select-Object -First 1
+
+        if ($null -eq $msiFile) {
+            Write-Error "No MSI file found!"
+            exit 1
+        }
+
+        Write-Host "Found MSI: $($msiFile.FullName)"
+
+        # Create a distribution directory
+        $distDir = "dist"
+        New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+
+        # Copy MSI to dist
+        Copy-Item -Path $msiFile.FullName -Destination $distDir
+
+        # Copy models folder to dist
+        Copy-Item -Path "models" -Destination $distDir -Recurse
+
+        # Create zip file
+        $zipName = "${{ inputs.package-name }}.zip"
+        Write-Host "Creating $zipName..."
+        Compress-Archive -Path "$distDir/*" -DestinationPath $zipName -Force
+
+        Write-Host "Package created successfully: $zipName"
+
+        # Set output
+        echo "zip-path=$zipName" >> $env:GITHUB_OUTPUT

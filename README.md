@@ -1,8 +1,32 @@
 # Fetch
 
-A human application interface aiming to provide the ability to interact with machine vector interfaces.
+A file search application that utilizes locally generated semantic vector embeddings to supplement searches with the actual content of the files themselves.
 
 ## Quick Start
+
+To get started with Fetch, download the appropriate installer for your operating system in the latest release on the right and run. The installer will guide you through necessary steps.
+
+If you have previously installed an earlier version of Fetch, you may need to 
+
+### Windows Installation
+
+### Early Alpha Software Warning
+
+## Features
+
+## Semantic Search
+
+### Available Models and File Types
+
+#### Supported Hardware
+
+### Other Search Heuristics
+
+## Settings and Application Data
+
+## CLI
+
+## Building from source
 
 No distributable binaries setup as of yet. Gotta build from source.
 

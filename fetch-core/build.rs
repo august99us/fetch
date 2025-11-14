@@ -29,13 +29,19 @@ fn main() {
         }
     }
 
-    // disable model downloading for windows because it increases the size of the bundle
-    // too much for light.exe to handle. models for windows must be packaged separately
-    #[cfg(not(target_os = "windows"))]
-    {
+    // Skip model downloading in release builds - CI/CD workflows will download models
+    // For Windows: models are packaged separately with the MSI installer
+    // For macOS/Linux: models are downloaded by CI before building and included in the bundle
+    // Models are only downloaded automatically for debug builds to support local development
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    let is_release = profile == "release";
+
+    if !is_release {
+        println!("cargo:warning=Debug build detected - downloading models for local development");
+
         match download_hf_model(
-            "siglip2-base-patch16-512", 
-            "august99us/siglip2-base-patch16-512-fetch", 
+            "siglip2-base-patch16-512",
+            "august99us/siglip2-base-patch16-512-fetch",
             &models_folder
         ) {
             Ok(_) => {},
@@ -54,6 +60,8 @@ fn main() {
                 println!("cargo:error=Failed to load embeddinggemma model files: {}", e);
             }
         }
+    } else {
+        println!("cargo:warning=Release build detected - skipping model download (expecting models to be pre-downloaded by CI)");
     }
 }
 

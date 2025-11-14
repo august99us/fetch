@@ -69,17 +69,22 @@ jobs:
         }
 
     - name: Install frontend dependencies
-      working-directory: fetch
+      working-directory: fetch-tauri
       run: npm install
 
     - name: Build Tauri application (Full - ${{ inputs.architecture }})
-      working-directory: fetch
+      working-directory: fetch-tauri
       run: npm run tauri build -- --features cuda
+
+    - name: Package MSI with models
+      uses: ./.github/actions/package-windows-msi
+      with:
+        package-name: fetch-windows-full-${{ inputs.architecture }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: fetch-windows-full-${{ inputs.architecture }}
         path: |
-          target/release/bundle/
+          fetch-windows-full-${{ inputs.architecture }}.zip
         retention-days: 7

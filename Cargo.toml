@@ -2,7 +2,7 @@
 members = [
     "fetch-cli",
     "fetch-core",
-    "fetch/src-tauri",
+    "fetch-tauri/src-tauri",
 ]
 resolver = "2"
 

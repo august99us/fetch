@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!--
+      Custom action to copy the 'models' folder from next to the MSI
+      into the installation directory.
+
+      This uses an inline PowerShell command that:
+      1. Gets the directory containing the MSI file
+      2. Looks for a 'models' folder next to the MSI
+      3. Copies it to the installation directory
+    -->
+
+    <!-- Set the PowerShell command as a property with variable substitution -->
+    <SetProperty
+      Id="CopyModelsFolder"
+      Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;$msiPath = '[OriginalDatabase]'; $msiDir = Split-Path -Parent $msiPath; $modelsSource = Join-Path $msiDir 'models'; $modelsTarget = Join-Path '[INSTALLDIR]' 'models'; if (Test-Path $modelsSource) { if (Test-Path $modelsTarget) { Remove-Item -Path $modelsTarget -Recurse -Force }; Copy-Item -Path $modelsSource -Destination $modelsTarget -Recurse -Force }&quot;"
+      Before="CopyModelsFolder"
+      Sequence="execute"
+    />
+
+    <!-- Execute the PowerShell command -->
+    <CustomAction
+      Id="CopyModelsFolder"
+      Property="CopyModelsFolder"
+      ExeCommand="[CopyModelsFolder]"
+      Execute="deferred"
+      Return="ignore"
+      Impersonate="no"
+    />
+
+    <!-- Set the PowerShell command to remove models folder on uninstall -->
+    <SetProperty
+      Id="RemoveModelsFolder"
+      Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;$modelsTarget = Join-Path '[INSTALLDIR]' 'models'; if (Test-Path $modelsTarget) { Remove-Item -Path $modelsTarget -Recurse -Force }&quot;"
+      Before="RemoveModelsFolder"
+      Sequence="execute"
+    />
+
+    <!-- Execute the PowerShell command to remove models on uninstall -->
+    <CustomAction
+      Id="RemoveModelsFolder"
+      Property="RemoveModelsFolder"
+      ExeCommand="[RemoveModelsFolder]"
+      Execute="deferred"
+      Return="ignore"
+      Impersonate="no"
+    />
+
+    <!-- Schedule the custom actions in the installation sequence -->
+    <InstallExecuteSequence>
+      <!-- Run the copy action after files are installed -->
+      <!-- Only run on fresh install or upgrades, not on uninstall -->
+      <Custom Action="CopyModelsFolder" After="InstallFiles">NOT Installed OR REINSTALL</Custom>
+
+      <!-- Run the remove action during uninstall -->
+      <!-- Only run when uninstalling (REMOVE="ALL" and not upgrading) -->
+      <Custom Action="RemoveModelsFolder" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+
+    <!-- Define a component to reference in tauri.conf.json -->
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="CopyModelsComponent" Guid="*">
+        <!-- This registry value serves as a keypath for the component -->
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\[Manufacturer]\[ProductName]"
+          Name="ModelsCopied"
+          Type="string"
+          Value="1"
+          KeyPath="yes"
+        />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
