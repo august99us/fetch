@@ -22,7 +22,7 @@
     <!-- Execute the PowerShell command -->
     <CustomAction
       Id="CopyModelsFolder"
-      Property="CopyModelsFolder"
+      Directory="INSTALLDIR"
       ExeCommand="[CopyModelsFolder]"
       Execute="deferred"
       Return="ignore"
@@ -40,7 +40,7 @@
     <!-- Execute the PowerShell command to remove models on uninstall -->
     <CustomAction
       Id="RemoveModelsFolder"
-      Property="RemoveModelsFolder"
+      Directory="INSTALLDIR"
       ExeCommand="[RemoveModelsFolder]"
       Execute="deferred"
       Return="ignore"

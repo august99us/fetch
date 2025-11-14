@@ -24,5 +24,5 @@ tokio-util = "0.7.17"
 opt-level = "z"          # Optimize for size
 lto = true               # Enable Link Time Optimization (removes dead code across crates)
 codegen-units = 1        # Better optimization (slower compile, but smaller binary)
-strip = true             # Strip debug symbols from binary
-panic = "abort"          # Smaller panic handler (no unwinding)
+# strip = true             # Strip debug symbols from binary
+# panic = "abort"          # Smaller panic handler (no unwinding)
