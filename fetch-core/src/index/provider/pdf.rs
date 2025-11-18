@@ -314,7 +314,7 @@ const IMAGE_CHUNK_MAX_SIDE: u32 = 512;
 // These constants must be tuned to the hybrid query results of lance FTS and siglip2 vector cosine similarity reranking
 // TODO: tune
 const EXPECTED_MAX_SCORE: f32 = 1.0;
-const MIN_SCORE: f32 = 0.015;
+const MIN_SCORE: f32 = 0.02;
 
 pub(crate) static PDFIUM_LIB_PATH: OnceLock<Utf8PathBuf> = OnceLock::new();
 

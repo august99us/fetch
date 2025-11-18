@@ -249,7 +249,7 @@ const IMAGE_CHUNK_LENGTH: f32 = 1.0;
 // These constants must be tuned to the hybrid query results of lance FTS and siglip2 vector cosine similarity reranking
 // TODO: tune
 const EXPECTED_MAX_SCORE: f32 = 1.0;
-const MIN_SCORE: f32 = 0.015;
+const MIN_SCORE: f32 = 0.02;
 
 async fn chunk_image(path: &Utf8Path, file: &mut File, metadata: &Metadata, out_dir: &Utf8Path)
     -> Result<Vec<ChunkFile>, IndexProviderError>

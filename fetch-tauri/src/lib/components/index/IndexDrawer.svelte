@@ -18,13 +18,17 @@
     onindex,
   }: Props = $props();
 
+  // Maximum characters to keep in log (prevents unbounded growth)
+  // Targetted effective line count of 500 (150 characters per line)
+  const MAX_LOG_CHARS = 75000;
+
   let drawerWidth = $state.raw(1200);
   let stagedPaths = $state<string[]>([]);
   let selectedPaths = $state<string[]>([]);
   let indexing = $state(false);
   let progressCurrent = $state(0);
   let progressTotal = $state(0);
-  let logs = $state<string[]>([]);
+  let logs = $state<string>('');
   let logTextarea: HTMLTextAreaElement | undefined = $state();
 
   interface ProgressEvent {
@@ -44,7 +48,14 @@
       progressTotal = event.payload.total;
     });
     unlistenLog = await appWebview.listen<LogEvent>('index_log', (event) => {
-      logs.push(event.payload.message);
+      // Append new log with newline
+      logs += (logs.length > 0 ? '\n' : '') + event.payload.message;
+
+      // Simple trim from beginning if exceeds max
+      if (logs.length > MAX_LOG_CHARS) {
+        logs = logs.substring(logs.length - MAX_LOG_CHARS);
+      }
+
       if (logTextarea) {
         logTextarea.scrollTop = logTextarea.scrollHeight;
       }
@@ -80,7 +91,7 @@
   }
 
   async function handleIndex() {
-    logs = [];
+    logs = '';
     indexing = true;
     try {
       await invoke('index', { paths: stagedPaths });
@@ -195,7 +206,7 @@
           bind:this={logTextarea}
           class="log-display"
           readonly
-          value={logs.join('\n')}
+          value={logs}
         ></textarea>
       </div>
     </div>

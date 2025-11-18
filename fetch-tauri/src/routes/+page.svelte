@@ -246,7 +246,7 @@
           autofocus
         />
         <button type="submit" class="logo-button">
-          <img src="/fetch.svg" class="logo" alt="Fetch Logo" />
+          <img src="/Fetch_Logo_Mark_Gradient.svg" class="logo" alt="Fetch Logo" />
         </button>
       </span>
     </form>
