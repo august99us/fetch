@@ -107,7 +107,7 @@ With the increased proliferation of neural processing units and neural network c
 | Hardware Type | Examples | Current Support | Notes |
 | --- | --- | --- | --- |
 | CPU | x86_64, ARM64 | ✓ Supported | Default execution provider, works on all platforms |
-| NVIDIA GPU (CUDA) | GeForce RTX, GTX series | ✓ Supported | Requires `cuda` feature flag and CUDA-enabled ONNX Runtime. May require installed cudNN on user device. |
+| NVIDIA GPU (CUDA) | GeForce RTX, GTX series | ✓ Testing | Requires `cuda` feature flag and CUDA-enabled ONNX Runtime. May require installed cudNN on user device. |
 | Qualcomm NPU (QNN) | Snapdragon X Elite, 8 Gen series | ✓ Experimental | Requires `qnn` feature flag and custom ONNX Runtime build |
 | Apple Neural Engine | M-series chips, A-series chips | Planned | CoreML execution provider integration planned |
 | Intel NPU | Intel Core Ultra (Meteor Lake+) | Planned | OpenVINO execution provider integration planned |
