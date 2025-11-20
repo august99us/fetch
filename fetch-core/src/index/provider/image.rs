@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs::Metadata, hash::{DefaultHasher, Hash, Hasher}, io::Cursor, sync::{Arc, LazyLock}};
+use std::{collections::HashSet, fs::Metadata, io::Cursor, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use camino::Utf8Path;
@@ -7,9 +7,9 @@ use image::{DynamicImage, ImageFormat, ImageReader, RgbaImage, imageops::FilterT
 use log::debug;
 use psd::{Psd, PsdLayer};
 use serde_json::Map;
-use tokio::{fs::{self, File}, io::AsyncReadExt, task};
+use tokio::{fs::File, io::AsyncReadExt, task};
 
-use crate::{app_config::get_default_chunk_directory, index::{ChunkFile, ChunkType, embedding::siglip2::{Siglip2EmbeddedChunkFile, embed_chunk, embed_query}, provider::{ChunkQueryResult, ChunkingIndexProvider, IndexProviderError, IndexProviderErrorType}}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedStore, QueryByFilter, QueryFull}};
+use crate::{index::{ChunkFile, ChunkType, embedding::siglip2::{Siglip2EmbeddedChunkFile, embed_chunk, embed_query}, provider::{ChunkQueryResult, ChunkingIndexProvider, IndexProviderError, IndexProviderErrorType, create_chunkfile_dir, clear_chunkfiles}}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedStore, QueryByFilter, QueryFull}};
 
 pub struct ImageIndexProvider<S>
 where
@@ -103,18 +103,14 @@ where
         }
 
         // generate folder to store file chunks
-        let chunk_data_dir = get_default_chunk_directory();
-        let mut hasher = DefaultHasher::new();
-        path.as_str().hash(&mut hasher);
-        let filename_hash = hasher.finish().to_string();
-        let chunk_out_dir = chunk_data_dir.join(filename_hash);
-        fs::create_dir_all(&chunk_out_dir).await.map_err(|e| IndexProviderError {
-            provider_name: PROVIDER_NAME.to_string(),
-            r#type: IndexProviderErrorType::IO {
-                path: path.to_string(),
-                source: e.into(),
-            }
-        })?;
+        let chunk_out_dir = create_chunkfile_dir(path).await
+            .map_err(|e| IndexProviderError {
+                provider_name: PROVIDER_NAME.to_string(),
+                r#type: IndexProviderErrorType::IO {
+                    path: path.to_string(),
+                    source: e.into(),
+                }
+            })?;
 
         debug!("Image Index Provider: Chunking file at path: {} to out_dir: {}", path, chunk_out_dir);
         let chunkfiles = if path.extension() == Some("psd") {
@@ -144,7 +140,13 @@ where
 
     async fn clear(&self, path: &Utf8Path, opt_modified: Option<DateTime<Utc>>) -> Result<(), IndexProviderError> {
         debug!("Image Index Provider: Clearing index of path: {}", path);
-        // TODO: Where is deleting the chunkfile itself?
+
+        // TODO: This chunkfile clearing does not care about opt_modified.
+        //       Maybe make this better in the future?
+        clear_chunkfiles(path).await.map_err(|e| IndexProviderError {
+            provider_name: PROVIDER_NAME.to_string(),
+            r#type: IndexProviderErrorType::IO { path: path.to_string(), source: e.into() }
+        })?;
 
         let mut filters = vec![Filter {
             attribute: ChunkFile::ORIGINAL_FILE_ATTR,
@@ -178,8 +180,8 @@ where
         })?;
 
         let chunks = self.vector_store.query_full_n(
-            vec,
-            Some(str),
+            Some(vec),
+            None, // Some(str) // temporarily disabled for tuning
             &[],
             num_results,
             offset
@@ -193,16 +195,18 @@ where
 
         let mut results = vec![];
         for chunk in chunks {
-            if chunk.score < MIN_SCORE {
-                // end results list at min_score
-                break;
+            if chunk.score >= MIN_SCORE {
+                // normalize to 0-100
+                let norm_score = ((chunk.score - MIN_SCORE) / (EXPECTED_MAX_SCORE - MIN_SCORE)) * 100.0;
+                debug!("Image Index Provider: Normalized result score: orig: {}, chunkfile: {}, orig_score: {}, \
+                    norm_score: {}", chunk.result.chunkfile.original_file, chunk.result.chunkfile.chunkfile,
+                    chunk.score, norm_score);
+                results.push(ChunkQueryResult::new(chunk.result.chunkfile, norm_score));
+            } else {
+                debug!("Image Index Provider: Result score is under minimum threshold: orig: {}, chunkfile: {}, \
+                    orig_score: {}", chunk.result.chunkfile.original_file, chunk.result.chunkfile.chunkfile,
+                    chunk.score);
             }
-
-            // normalize to 0-100
-            let norm_score = ((chunk.score - MIN_SCORE) / (EXPECTED_MAX_SCORE - MIN_SCORE)) * 100.0;
-            debug!("Image Index Provider: Normalized result score: {}, orig_score: {}, \
-                norm_score: {}", chunk.result.chunkfile.chunkfile, chunk.score, norm_score);
-            results.push(ChunkQueryResult::new(chunk.result.chunkfile, norm_score));
         }
         Ok(results)
     }
@@ -248,8 +252,8 @@ const IMAGE_CHUNK_LENGTH: f32 = 1.0;
 
 // These constants must be tuned to the hybrid query results of lance FTS and siglip2 vector cosine similarity reranking
 // TODO: tune
-const EXPECTED_MAX_SCORE: f32 = 1.0;
-const MIN_SCORE: f32 = 0.02;
+const EXPECTED_MAX_SCORE: f32 = 0.3;
+const MIN_SCORE: f32 = 0.05;
 
 async fn chunk_image(path: &Utf8Path, file: &mut File, metadata: &Metadata, out_dir: &Utf8Path)
     -> Result<Vec<ChunkFile>, IndexProviderError>

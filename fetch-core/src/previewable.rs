@@ -2,13 +2,6 @@ use std::{future::Future, time::SystemTime};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
-/// The type of preview that was generated for a file.
-pub enum PreviewType {
-    /// A text-based preview of the file content
-    Text,
-    /// An image preview of the file (thumbnail, rendered preview, etc.)
-    Image,
-}
 /// A file that has been successfully processed into a preview representation.
 /// 
 /// This struct contains metadata about both the original file and its generated preview,
@@ -20,8 +13,6 @@ pub struct PreviewedFile {
     pub preview_path: Utf8PathBuf,
     /// When this preview was generated
     pub timestamp: SystemTime,
-    /// The type of preview that was generated
-    pub r#type: PreviewType,
 }
 
 /// Describes an object that can potentially be simplified or condensed into a smaller, 
@@ -87,7 +78,6 @@ impl PossiblyPreviewable for Utf8Path {
             path: self.to_path_buf(),
             preview_path: pp.to_path_buf(),
             timestamp: SystemTime::now(),
-            r#type: PreviewType::Image,
         }))
     }
 }

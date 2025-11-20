@@ -6,13 +6,31 @@ A file search application that utilizes locally generated semantic vector embedd
 
 To get started with Fetch, download the appropriate installer for your operating system in the latest release on the right and run. The installer will guide you through the necessary steps.
 
+Index some data using the index pane in the GUI. Note: If you want to index a very large folder, currently it will likely be better if you use the [CLI](#cli), it is more stable.
+
+(GIF)
+
+Then get to searching!
+
+(GIF)
+
+Press Ctrl(or Cmd)+Shift+Space to search quickly from anywhere.
+
+![Fetch Quick Search](repo-assets/fetch.gif)
+
+Fetch enables this quick search shortcut by living in your tray. This also helps it keep the neural networks warm, and perform automatic indexing as your files change (in the future!). The downside of this is that Fetch will take 2GB~ish of memory. In the future, this will be more configurable. For now, if you want to fully exit Fetch, use the tray icon!
+
+![Tray](repo-assets/tray.gif)
+
+You can then boot up Fetch again any time you need to search or index files.
+
 If these installers do not work for you, or you would like to customize your installation (maybe with custom builds of ONNXRuntime or such) you can follow the steps in the [Building from source](#building-from-source) section to build from source.
 
 If you have previously installed an earlier version of Fetch, you may need to clear the application data directory in order for the application to work if the database schemas and/or configuration files have changed since the previously installed release. If your application crashes on startup or as soon as you do any indexing/querying, then this is probably the issue. See [Settings and Application Data](#settings-and-application-data) for more details.
 
 ### Early Alpha Software Warning
 
-Caution: Fetch is currently in very very early alpha phase software.
+Caution: Fetch is currently in very very early alpha phase.
 
 While I will try to provide as much tooling and how-tos and graphical interfaces I can, expect that you will probably eventually have to get your hands wet and interact with the command line and installed files directly at some point if you continue using the application. 
 
@@ -40,9 +58,9 @@ Fetch allows users to query in three different ways:
 
 Fetch provides many searchable aspects by default. The specific searchable aspects that are available for a file may vary depending on the file type. Here is a general list of searchable aspects that I aim to provide:
 
-1) Full and partial text matching by file name
+1) Full and partial text matching by file name (Currently under testing)
 2) Semantic matching based on the semantic meaning of the query and the semantic content of the file
-3) Full and partial text matching by file text content (if there is any)
+3) Full and partial text matching by file text content (Currently under testing)
 4) Full and partial text matching on tags applied to the file (Under construction)
 5) Filtering based on creation and modified dates (Under construction)
 6) Filtering based on containing directory
@@ -181,14 +199,14 @@ Options:
 - `-n, --num-results <NUM>` - The number of file results to return
 - `-c, --chunks-per-query <NUM>` - The number of chunks to query per API call (higher = faster but more memory)
 
-**`fetch query-by-file`** - Query the semantic file index using a file (e.g., find similar images)
+**`fetch query-by-file`** - Query the semantic file index using a file (e.g., find similar images). Experimental API that only accepts images and returns images.
 
 ```bash
 # Find files similar to a query file
 fetch query-by-file /path/to/image.jpg
 
 # Limit number of results
-fetch query-by-file -n 5 /path/to/document.pdf
+fetch query-by-file -n 5 /path/to/image.jpg
 ```
 
 Options:

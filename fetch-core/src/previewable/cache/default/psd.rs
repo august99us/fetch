@@ -1,12 +1,10 @@
 use std::io::Cursor;
 
-use image::{imageops::FilterType, DynamicImage, ImageFormat, RgbaImage};
+use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use psd::{Psd, PsdLayer};
 use tokio::{fs::File, io::AsyncReadExt, task};
 
-pub const PREVIEW_EXTENSION: &str = "webp";
-
-const PREVIEW_MAX_SIDE: u32 = 400;
+use crate::previewable::cache::default::{PREVIEW_FORMAT, PREVIEW_MAX_SIDE};
 
 /// Returns a vector of bytes representing a resized preview of the rendered psd file
 pub async fn calculate_preview(mut file: File) -> Result<Vec<u8>, anyhow::Error> {
@@ -32,7 +30,7 @@ pub async fn calculate_preview(mut file: File) -> Result<Vec<u8>, anyhow::Error>
         );
 
         let mut preview_bytes: Vec<u8> = Vec::new();
-        image.write_to(&mut Cursor::new(&mut preview_bytes), ImageFormat::WebP)?;
+        image.write_to(&mut Cursor::new(&mut preview_bytes), PREVIEW_FORMAT)?;
         Ok::<Vec<u8>, anyhow::Error>(preview_bytes)
     }).await??; // this is Result<Result<vec, closure_error>, tokio::task_error>
 

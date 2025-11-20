@@ -1,47 +1,14 @@
 use std::{collections::HashMap, future::Future, hash::{DefaultHasher, Hash, Hasher}, io, pin::Pin, sync::LazyLock};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use ::image::ImageFormat;
 use log::info;
 use tokio::fs::{self, File};
 
-use crate::{app_config, previewable::{PreviewError, PreviewType}};
-
-// Function interface, takes in a file, returns the bytes of the generated preview and its file extension
-// in eg. "txt" format
-type CalcFnPointer = fn(File) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send>>;
-
-static EXTENSION_TO_PREVIEW: LazyLock<HashMap<&'static str, (PreviewType, CalcFnPointer)>> = LazyLock::new(|| {
-    let mut map = HashMap::new();
-    // file types supported by image crate
-    let standard_image_fn = (|f| Box::pin(image::calculate_preview(f))) as CalcFnPointer;
-    map.insert("avif", (PreviewType::Image, standard_image_fn));
-    map.insert("bmp", (PreviewType::Image, standard_image_fn));
-    map.insert("dds", (PreviewType::Image, standard_image_fn));
-    map.insert("ff", (PreviewType::Image, standard_image_fn));
-    map.insert("hdr", (PreviewType::Image, standard_image_fn));
-    map.insert("ico", (PreviewType::Image, standard_image_fn));
-    map.insert("jpg", (PreviewType::Image, standard_image_fn));
-    map.insert("jpeg", (PreviewType::Image, standard_image_fn));
-    map.insert("exr", (PreviewType::Image, standard_image_fn));
-    map.insert("png", (PreviewType::Image, standard_image_fn));
-    map.insert("pnm", (PreviewType::Image, standard_image_fn));
-    map.insert("qoi", (PreviewType::Image, standard_image_fn));
-    map.insert("tga", (PreviewType::Image, standard_image_fn));
-    map.insert("tif", (PreviewType::Image, standard_image_fn));
-    map.insert("tiff", (PreviewType::Image, standard_image_fn));
-    map.insert("webp", (PreviewType::Image, standard_image_fn));
-    // psd files, using psd crate
-    #[cfg(feature = "psd")]
-    {
-        let psd_image_fn = (|f| Box::pin(psd::calculate_preview(f))) as CalcFnPointer;
-        map.insert("psd", (PreviewType::Image, psd_image_fn));
-    }
-    // Add more extensions and their corresponding preview calculation functions here
-    map
-});
+use crate::{app_config, previewable::PreviewError};
 
 pub fn has_generator_for_type(extension: &str) -> bool {
-    EXTENSION_TO_PREVIEW.contains_key(extension)
+    EXTENSION_TO_FUNCTION.contains_key(extension)
 }
 
 pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, PreviewError> {
@@ -66,14 +33,13 @@ pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, Pr
 
     // At this point we know that 1) the file exists and 2) we should be able to generate a preview for it,
     // because the module has registered the fact that we have a generator for this file type.
-    let preview_type_and_fn = EXTENSION_TO_PREVIEW.get(extension)
+    let preview_fn = EXTENSION_TO_FUNCTION.get(extension)
         .expect("Already checked that extension is something this module can operate on");
-    let preview_type = &preview_type_and_fn.0;
 
     // TODO: Locking when the try_lock() API is available to stable rust std?
 
     // First check if the preview is already available in the cache
-    let preview_filename = hash_file_path(path, preview_type_to_extension(preview_type));
+    let preview_filename = hash_file_path(path);
     let preview_path = retrieve_preview_directory().join(preview_filename);
     if preview_path.is_file() {
         let preview_file = File::open(&preview_path).await
@@ -86,7 +52,7 @@ pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, Pr
 
     // preview is not available or outdated so it needs to be re-generated
 
-    let bytes = preview_type_and_fn.1(file).await
+    let bytes = preview_fn(file).await
         .map_err(|e| PreviewError::Generation { path: path.to_string(), source: e })?;
     fs::write(&preview_path, &bytes).await
         .map_err(|e| PreviewError::IO { path: path.to_string(), source: e })?;
@@ -96,19 +62,52 @@ pub async fn generate_preview(path: &Utf8Path) -> Result<Option<Utf8PathBuf>, Pr
     Ok(Some(preview_path))
 }
 
-// private functions/modules
+// private functions/modules/constant
 
-// Returns the preview file extension for the given preview type
-// Expects that this mapping existing was something that was previously checked
-fn preview_type_to_extension(preview_type: &PreviewType) -> &'static str {
-    match preview_type {
-        PreviewType::Image => image::PREVIEW_EXTENSION,
-        // TODO: there will be an issue here because PSD files are not always previewed into images,
-        // sometimes they can be previewed into GIFs. Perhaps the function needs to return an extension.
-        // Add more preview types and their corresponding extensions here
-        _ => panic!("No extension registered for this preview type"),
+// max height/width for generated previews. to be imported in submodules
+const PREVIEW_MAX_SIDE: u32 = 300;
+
+const PREVIEW_FORMAT: ImageFormat = ImageFormat::WebP;
+const PREVIEW_FILE_EXTENSION: &str = "webp";
+
+// Function interface, takes in a file, returns the bytes of the generated preview and its file extension
+// in eg. "txt" format
+type CalcFnPointer = fn(File) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send>>;
+
+static EXTENSION_TO_FUNCTION: LazyLock<HashMap<&'static str, CalcFnPointer>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    // file types supported by image crate
+    let standard_image_fn = (|f| Box::pin(image::calculate_preview(f))) as CalcFnPointer;
+    map.insert("avif", standard_image_fn);
+    map.insert("bmp", standard_image_fn);
+    map.insert("dds", standard_image_fn);
+    map.insert("ff", standard_image_fn);
+    map.insert("hdr", standard_image_fn);
+    map.insert("ico", standard_image_fn);
+    map.insert("jpg", standard_image_fn);
+    map.insert("jpeg", standard_image_fn);
+    map.insert("exr", standard_image_fn);
+    map.insert("png", standard_image_fn);
+    map.insert("pnm", standard_image_fn);
+    map.insert("qoi", standard_image_fn);
+    map.insert("tga", standard_image_fn);
+    map.insert("tif", standard_image_fn);
+    map.insert("tiff", standard_image_fn);
+    map.insert("webp", standard_image_fn);
+    // psd files, using psd crate
+    #[cfg(feature = "psd")]
+    {
+        let psd_image_fn = (|f| Box::pin(psd::calculate_preview(f))) as CalcFnPointer;
+        map.insert("psd", psd_image_fn);
     }
-}
+    #[cfg(feature = "pdf")]
+    {
+        let pdf_image_fn = (|f| Box::pin(pdf::calculate_preview(f))) as CalcFnPointer;
+        map.insert("pdf", pdf_image_fn);
+    }
+    // Add more extensions and their corresponding preview calculation functions here
+    map
+});
 
 // checks if the preview file was created after the original file was modified
 async fn preview_creation_after_file_modification(file: &File, preview_file: &File) -> Result<bool, io::Error> {
@@ -125,14 +124,16 @@ fn retrieve_preview_directory() -> Utf8PathBuf {
 }
 
 // Hash file path. Expects that path.file_name() results in a valid UTF-8 string. Will panic otherwise.
-fn hash_file_path(path: &Utf8Path, preview_extension: &str) -> String {
+fn hash_file_path(path: &Utf8Path) -> String {
     let mut hasher = DefaultHasher::new();
     path.as_str().hash(&mut hasher);
     format!("{:x}-{}.{}", hasher.finish(), 
         path.file_stem().expect("file_stem() should be previously checked, cannot be None"), 
-        preview_extension)
+        PREVIEW_FILE_EXTENSION)
 }
 
 mod image;
 #[cfg(feature = "psd")]
 mod psd;
+#[cfg(feature = "pdf")]
+mod pdf;

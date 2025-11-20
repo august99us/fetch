@@ -2,7 +2,7 @@ use std::{collections::HashSet, error::Error};
 
 use camino::Utf8PathBuf;
 use chrono::Utc;
-use fetch_core::files::index::IndexFiles;
+use fetch_core::files::index::{FileIndexingResultType, IndexFiles};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -58,7 +58,25 @@ pub async fn index(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
         .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
 
         match file_indexer.index(path, Some(Utc::now())).await {
-            Ok(_) => {},
+            Ok(res) => {
+                match res.r#type {
+                    FileIndexingResultType::Skipped { reason } => {
+                        app.emit_to(
+                            "full",
+                            LOG_EVENT_IDENTIFIER,
+                            Log {
+                                message: format!(
+                                    "File skipped {}, reason: {}",
+                                    path,
+                                    reason,
+                                )
+                            },
+                        )
+                        .unwrap_or_else(|e: tauri::Error| eprintln!("Could not emit log event: {}", e));
+                    },
+                    _ => {},
+                }
+            },
             Err(e) => {
                 app.emit_to(
                     "full",

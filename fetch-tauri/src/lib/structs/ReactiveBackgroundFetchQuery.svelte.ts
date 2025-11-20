@@ -111,6 +111,7 @@ export default class ReactiveBackgroundFetchQuery {
             }
           }
         } catch (error) {
+          console.log("Error occurred while querying: " + error);
           break;
         }
       }

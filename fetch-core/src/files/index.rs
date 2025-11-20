@@ -38,9 +38,9 @@ impl IndexFiles for FileIndexer
         let results = self.index_providers.distribute_calls(async move |p| {
             let ext = path_clone.extension().unwrap_or("");
             if p.provides_indexing_for_extension(ext) {
-                p.index(&path_clone, opt_modified).await
+                Some(p.index(&path_clone, opt_modified).await)
             } else {
-                Ok(())
+                None
             }
         }).await.map_err(|e| FileIndexingError {
             path: path.to_owned(),
@@ -50,24 +50,33 @@ impl IndexFiles for FileIndexer
             },
         })?;
 
+        let mut was_processed = false;
         let mut provider_error_map = HashMap::new();
-        for res in results {
-            if let Err(e) = res {
-                let provider_name = e.provider_name.clone();
-                match e.r#type {
-                    IndexProviderErrorType::Sequencing { provided_datetime, stored_datetime } => {
-                        // Ignore sequencing errors.
-                        info!("FileIndexer: Attempted indexing on file: {} but the stored modified_date \
-                            ({}) was equal to or later than the file's modified_date ({}). Ignoring.",
-                            path,
-                            stored_datetime, provided_datetime
-                        );
-                    },
-                    _ => {
-                        provider_error_map.insert(provider_name, e);
+        for res_opt in results {
+            if let Some(res) = res_opt {
+                was_processed = true;
+                if let Err(e) = res {
+                    let provider_name = e.provider_name.clone();
+                    match e.r#type {
+                        IndexProviderErrorType::Sequencing { provided_datetime, stored_datetime } => {
+                            // Ignore sequencing errors.
+                            info!("FileIndexer: Attempted indexing on file: {} but the stored modified_date \
+                                ({}) was equal to or later than the file's modified_date ({}). Ignoring.",
+                                path,
+                                stored_datetime, provided_datetime
+                            );
+                        },
+                        _ => {
+                            provider_error_map.insert(provider_name, e);
+                        }
                     }
                 }
             }
+        }
+
+        if !was_processed {
+            return Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Skipped {
+                reason: "Extension not registered in any provider".to_string() } })
         }
         
         if !provider_error_map.is_empty() {

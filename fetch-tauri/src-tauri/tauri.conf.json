@@ -1,30 +1,28 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "fetch",
-  "version": "0.0.2",
-  "identifier": "com.sparrow.fetch",
-  "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../build"
-  },
   "app": {
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost",
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["*/**"],
+          "allow": [
+            "*/**"
+          ],
           "deny": [],
           "requireLiteralLeadingDot": false
         }
-      }
+      },
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost"
     }
+  },
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../build"
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,110 +33,121 @@
     "resources": {
       "../../fetch-core/bundle/": ""
     },
+    "targets": [
+      "msi",
+      "dmg"
+    ],
     "windows": {
       "wix": {
-        "fragmentPaths": ["./windows/fragments/copy-models.wxs"],
-        "componentRefs": ["CopyModelsComponent"]
+        "componentRefs": [
+          "CopyModelsComponent"
+        ],
+        "fragmentPaths": [
+          "./windows/fragments/copy-models.wxs"
+        ]
       }
     }
   },
+  "identifier": "com.sparrow.fetch",
   "plugins": {
     "cli": {
-      "description": "Fetch",
-      "args": [],
       "afterHelp": "Run without subcommands to run the gui application, or run with subcommands for CLI",
+      "args": [],
+      "description": "Fetch",
       "subcommands": {
         "drop": {
-          "description": "drops entire database table (development use)",
           "args": [
             {
-              "name": "data_directory",
               "description": "Directory where the index is stored",
-              "takesValue": true,
-              "required": true
-            },
-            {
-              "name": "table_name",
-              "description": "Name of table to drop",
-              "takesValue": true,
-              "required": true
-            }
-          ]
-        },
-        "index": {
-          "description": "indexes things semantically",
-          "args": [
-            {
-              "name": "jobs",
-              "short": "j",
-              "description": "Number of parallel indexing jobs to run at once",
+              "name": "data_directory",
+              "required": true,
               "takesValue": true
             },
             {
-              "name": "recursive",
-              "short": "r",
-              "description": "Recursively look through sub folders to find files to index"
-            },
-            {
-              "name": "force",
-              "short": "f",
-              "description": "Do not confirm before indexing"
-            },
-            {
-              "name": "metrics",
-              "short": "m",
-              "description": "Track and print metrics"
-            },
-            {
-              "name": "paths",
-              "index": 1,
-              "takesValue": true,
-              "multiple": true,
-              "description": "File or folder paths to index"
+              "description": "Name of table to drop",
+              "name": "table_name",
+              "required": true,
+              "takesValue": true
             }
-          ]
+          ],
+          "description": "drops entire database table (development use)"
+        },
+        "index": {
+          "args": [
+            {
+              "description": "Number of parallel indexing jobs to run at once",
+              "name": "jobs",
+              "short": "j",
+              "takesValue": true
+            },
+            {
+              "description": "Recursively look through sub folders to find files to index",
+              "name": "recursive",
+              "short": "r"
+            },
+            {
+              "description": "Do not confirm before indexing",
+              "name": "force",
+              "short": "f"
+            },
+            {
+              "description": "Track and print metrics",
+              "name": "metrics",
+              "short": "m"
+            },
+            {
+              "description": "File or folder paths to index",
+              "index": 1,
+              "multiple": true,
+              "name": "paths",
+              "takesValue": true
+            }
+          ],
+          "description": "indexes things semantically"
         },
         "query": {
-          "description": "queries semantic file index with a query string",
           "args": [
             {
-              "name": "query",
+              "description": "String to query files with",
               "index": 1,
-              "takesValue": true,
-              "description": "String to query files with"
+              "name": "query",
+              "takesValue": true
             },
             {
+              "description": "The number of file results to return",
               "name": "num_results",
               "short": "n",
-              "takesValue": true,
-              "description": "The number of file results to return"
+              "takesValue": true
             },
             {
+              "description": "The number of chunks to query per API call (higher = faster but more memory)",
               "name": "chunks_per_query",
               "short": "c",
-              "takesValue": true,
-              "description": "The number of chunks to query per API call (higher = faster but more memory)"
+              "takesValue": true
             }
-          ]
+          ],
+          "description": "queries semantic file index with a query string"
         },
         "query-by-file": {
-          "description": "queries semantic file index with a query file",
           "args": [
             {
-              "name": "query",
+              "description": "Path to query file",
               "index": 1,
-              "takesValue": true,
-              "description": "Path to query file"
+              "name": "query",
+              "takesValue": true
             },
             {
+              "description": "The number of file results to return",
               "name": "num_results",
               "short": "n",
-              "takesValue": true,
-              "description": "The number of file results to return"
+              "takesValue": true
             }
-          ]
+          ],
+          "description": "queries semantic file index with a query file"
         }
       }
     }
-  }
+  },
+  "productName": "fetch",
+  "version": "0.0.3"
 }

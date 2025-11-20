@@ -1,6 +1,6 @@
 [package]
 name = "fetch-core"
-version = "0.0.2"
+version.workspace = true
 edition = "2021"
 
 [features]
@@ -31,10 +31,10 @@ tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["io-util"] }
 
 # LanceDB dependencies
-arrow = "55.1"
-arrow-array = "55.1"
-arrow-schema = "55.1"
-lancedb = { version = "0.21.1", default-features = false } # need oss maybe?
+arrow = "56.2"
+arrow-array = "56.2"
+arrow-schema = "56.2"
+lancedb = { version = "0.22.3", default-features = false } # need oss maybe?
 
 # NN Inference dependencies
 # Theoretically, i should be letting binary crates determine how they want to load dylibs. But it seems

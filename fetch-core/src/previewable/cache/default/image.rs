@@ -1,11 +1,9 @@
 use std::io::Cursor;
 
-use image::{imageops::FilterType, ImageFormat, ImageReader};
+use image::{imageops::FilterType, ImageReader};
 use tokio::{fs::File, io::AsyncReadExt, task};
 
-pub const PREVIEW_EXTENSION: &str = "webp";
-
-const PREVIEW_MAX_SIDE: u32 = 300;
+use crate::previewable::cache::default::{PREVIEW_FORMAT, PREVIEW_MAX_SIDE};
 
 /// Returns a vector of bytes representing the preview image
 pub async fn calculate_preview(mut file: File) -> Result<Vec<u8>, anyhow::Error> {
@@ -25,7 +23,7 @@ pub async fn calculate_preview(mut file: File) -> Result<Vec<u8>, anyhow::Error>
         );
 
         let mut preview_bytes: Vec<u8> = Vec::new();
-        image.write_to(&mut Cursor::new(&mut preview_bytes), ImageFormat::WebP)?;
+        image.write_to(&mut Cursor::new(&mut preview_bytes), PREVIEW_FORMAT)?;
         Ok::<Vec<u8>, anyhow::Error>(preview_bytes)
     }).await??; // this is Result<Result<vec, closure_error>, tokio::task_error>
 

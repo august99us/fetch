@@ -94,7 +94,7 @@ pub enum VectorStoreError {
     /// An error occurred during vector query execution.
     /// 
     /// This error wraps underlying errors that occur during similarity search operations.
-    #[error("Error performing vector query")]
+    #[error("Error performing vector query: {source}")]
     Query { #[source] source: anyhow::Error }
 }
 
@@ -121,11 +121,11 @@ pub trait FTSData {
 }
 
 pub trait QueryFull<D: VectorData + Filterable + FTSData> {
-    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: &[Filter<'a>]) -> 
+    fn query_full<'a>(&self, vector: Option<Vec<f32>>, fts_terms: Option<&str>, filters: &[Filter<'a>]) -> 
         impl Future<Output = Result<Vec<FullQueryResult<D>>, anyhow::Error>> + Send;
     fn query_full_n<'a>(
         &self,
-        vector: Vec<f32>,
+        vector: Option<Vec<f32>>,
         fts_terms: Option<&str>,
         filters: &[Filter<'a>],
         num_results: u32,
@@ -136,6 +136,7 @@ pub trait QueryFull<D: VectorData + Filterable + FTSData> {
 pub struct FullQueryResult<D: VectorData + Filterable + FTSData> {
     pub result: D,
     /// Descending relevancy score from combined query factors. higher = better
+    /// If there is no vector or fts field, then these will always be 0.0
     pub score: f32,
 }
 

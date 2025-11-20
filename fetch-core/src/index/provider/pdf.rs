@@ -1,17 +1,17 @@
-use std::{fs::Metadata, hash::{DefaultHasher, Hash, Hasher}, sync::{Arc, OnceLock}};
+use std::{fs::Metadata, sync::Arc};
 
 use async_trait::async_trait;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use chrono::{DateTime, Utc};
 use futures::TryFutureExt;
 use image::{DynamicImage, ImageFormat, imageops::FilterType};
 use log::{debug, info};
-use pdfium_render::prelude::{PdfPage, PdfPageObjectsCommon, Pdfium};
+use pdfium_render::prelude::{PdfPage, PdfPageObjectsCommon};
 use serde_json::Map;
-use tokio::{fs::{self, File}, join, task};
+use tokio::{fs::File, join, task};
 use tokio_util::io::SyncIoBridge;
 
-use crate::{app_config::get_default_chunk_directory, index::{ChunkFile, ChunkType, embedding::{embeddinggemma::{self, EmbeddingGemmaEmbeddedChunkFile}, siglip2::{self, Siglip2EmbeddedChunkFile}}, provider::{ChunkQueryResult, ChunkingIndexProvider, IndexProviderError, IndexProviderErrorType}}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedData, KeyedSequencedStore, QueryByFilter, QueryFull}};
+use crate::{environment::get_pdfium, index::{ChunkFile, ChunkType, embedding::{embeddinggemma::{self, EmbeddingGemmaEmbeddedChunkFile}, siglip2::{self, Siglip2EmbeddedChunkFile}}, provider::{ChunkQueryResult, ChunkingIndexProvider, IndexProviderError, IndexProviderErrorType, clear_chunkfiles, create_chunkfile_dir}}, store::{ClearByFilter, Filter, FilterRelation, FilterValue, KeyedSequencedData, KeyedSequencedStore, QueryByFilter, QueryFull}};
 
 pub struct PdfIndexProvider<TS, IS>
 where
@@ -120,21 +120,14 @@ where
         }
 
         // generate folder to store file chunks
-        // This could be pulled out into common chunking functionality.
-        // TODO: create chunking module and refactor stuff into image-rs chunker,
-        // pdfium chunker, etc.
-        let chunk_data_dir = get_default_chunk_directory();
-        let mut hasher = DefaultHasher::new();
-        path.as_str().hash(&mut hasher);
-        let filename_hash = hasher.finish().to_string();
-        let chunk_out_dir = chunk_data_dir.join(filename_hash);
-        fs::create_dir_all(&chunk_out_dir).await.map_err(|e| IndexProviderError {
-            provider_name: PROVIDER_NAME.to_string(),
-            r#type: IndexProviderErrorType::IO {
-                path: path.to_string(),
-                source: e.into(),
-            }
-        })?;
+        let chunk_out_dir = create_chunkfile_dir(path).await
+            .map_err(|e| IndexProviderError {
+                provider_name: PROVIDER_NAME.to_string(),
+                r#type: IndexProviderErrorType::IO {
+                    path: path.to_string(),
+                    source: e.into(),
+                }
+            })?;
 
         debug!("PDF Index Provider: Chunking file at path: {} to out_dir: {}", path, chunk_out_dir);
         let chunkfiles = chunk_pdf(path, file, metadata, &chunk_out_dir).await
@@ -187,8 +180,13 @@ where
 
     async fn clear(&self, path: &Utf8Path, opt_modified: Option<DateTime<Utc>>) -> Result<(), IndexProviderError> {
         debug!("PDF Index Provider: Clearing index of path: {}", path);
-        // TODO: Where is deleting the chunkfile itself?
 
+        // TODO: This chunkfile clearing does not care about opt_modified.
+        //       Maybe make this better in the future?
+        clear_chunkfiles(path).await.map_err(|e| IndexProviderError {
+            provider_name: PROVIDER_NAME.to_string(),
+            r#type: IndexProviderErrorType::IO { path: path.to_string(), source: e.into() }
+        })?;
 
         let mut filters = vec![Filter {
             attribute: ChunkFile::ORIGINAL_FILE_ATTR,
@@ -231,8 +229,8 @@ where
             })?;
 
             self.text_store.query_full_n(
-                text_vec,
-                Some(str),
+                Some(text_vec),
+                None, // Some(str), // temporarily disabled for tuning
                 &[],
                 num_results,
                 offset
@@ -251,8 +249,8 @@ where
             })?;
 
             self.image_store.query_full_n(
-                image_vec,
-                Some(str),
+                Some(image_vec),
+                None, // Some(str), // temporarily disabled for tuning
                 &[],
                 num_results,
                 offset
@@ -280,16 +278,16 @@ where
 
         let mut results = vec![];
         for (score, chunkfile) in chunks {
-            if score < MIN_SCORE {
-                // end results list at min_score
-                break;
+            if score >= MIN_SCORE {
+                // normalize to 0-100
+                let norm_score = ((score - MIN_SCORE) / (EXPECTED_MAX_SCORE - MIN_SCORE)) * 100.0;
+                debug!("PDF Index Provider: Normalized result score: orig: {}, chunkfile: {}, orig_score: {}, \
+                    norm_score: {}", chunkfile.original_file, chunkfile.chunkfile, score, norm_score);
+                results.push(ChunkQueryResult::new(chunkfile, norm_score));
+            } else {
+                debug!("PDF Index Provider: Result score is under minimum threshold: orig: {}, chunkfile: {}, \
+                    orig_score: {}", chunkfile.original_file, chunkfile.chunkfile, score)
             }
-
-            // normalize to 0-100
-            let norm_score = ((score - MIN_SCORE) / (EXPECTED_MAX_SCORE - MIN_SCORE)) * 100.0;
-            debug!("PDF Index Provider: Normalized result score: {}, orig_score: {}, \
-                norm_score: {}", chunkfile.chunkfile, score, norm_score);
-            results.push(ChunkQueryResult::new(chunkfile, norm_score));
         }
         Ok(results)
     }
@@ -314,9 +312,7 @@ const IMAGE_CHUNK_MAX_SIDE: u32 = 512;
 // These constants must be tuned to the hybrid query results of lance FTS and siglip2 vector cosine similarity reranking
 // TODO: tune
 const EXPECTED_MAX_SCORE: f32 = 1.0;
-const MIN_SCORE: f32 = 0.02;
-
-pub(crate) static PDFIUM_LIB_PATH: OnceLock<Utf8PathBuf> = OnceLock::new();
+const MIN_SCORE: f32 = 0.1;
 
 async fn chunk_pdf(path: &Utf8Path, file: File, metadata: Metadata, out_dir: &Utf8Path)
     -> Result<Vec<ChunkFile>, anyhow::Error>
@@ -511,14 +507,4 @@ fn extract_images_from_page(
     }
 
     Ok(images)
-}
-
-fn get_pdfium() -> Pdfium {
-    let pdfium_lib_path = PDFIUM_LIB_PATH.get_or_init(|| Utf8PathBuf::from("./"));
-    debug!("Initializing PDFium from path: {}...", pdfium_lib_path);
-
-    let bindings = Pdfium::bind_to_library(
-        Pdfium::pdfium_platform_library_name_at_path(pdfium_lib_path)
-    ).expect("Failed to bind PDFium to provided library");
-    Pdfium::new(bindings)
 }

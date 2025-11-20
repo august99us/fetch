@@ -83,6 +83,10 @@
   $effect(() => {
     fetchQuery?.effect();
   })
+
+  $effect(() => {
+    console.log(JSON.stringify(fetchQuery?.results));
+  })
 </script>
 
 <main class="full-search">

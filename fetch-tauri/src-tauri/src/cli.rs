@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
-use fetch_cli::{drop::DropArgs, index::IndexArgs, query::QueryArgs, query_by_file::QueryByFileArgs};
+use fetch_cli::{index::IndexArgs, query::QueryArgs, query_by_file::QueryByFileArgs};
 use tauri::AppHandle;
 use tauri_plugin_cli::{ArgData, CliExt};
 
@@ -16,25 +16,6 @@ pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
                 let sc_args = subcommand.matches.args;
                 check_help_and_maybe_exit(app_handle, &sc_args);
                 match subcommand.name.as_str() {
-                    "drop" => {
-                        let args = DropArgs {
-                            data_directory: PathBuf::from(sc_args
-                                .get("data_directory")
-                                .expect("subcommand was 'drop' but data_directory arg does not exist")
-                                .value
-                                .as_str()
-                                .expect("Could not get data_directory arg as string")),
-                            table_name: sc_args
-                                .get("table_name")
-                                .expect("subcommand was 'drop' but table_name arg does not exist")
-                                .value
-                                .as_str()
-                                .expect("Could not get table_name arg as string")
-                                .to_owned(),
-                        };
-
-                        fetch_cli::drop::drop(args).await?;
-                    },
                     "index" => {
                         let jobs: usize = sc_args
                             .get("jobs")
@@ -42,8 +23,15 @@ pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(4);
 
-                        let recursive = sc_args.contains_key("recursive");
-                        let force = sc_args.contains_key("force");
+                        println!("index sc_args {:?}", sc_args);
+                        let recursive = sc_args
+                            .get("recursive")
+                            .and_then(|arg| arg.value.as_bool())
+                            .unwrap_or(false);
+                        let force = sc_args
+                            .get("force")
+                            .and_then(|arg| arg.value.as_bool())
+                            .unwrap_or(false);
 
                         let paths: Vec<PathBuf> = sc_args
                             .get("paths")

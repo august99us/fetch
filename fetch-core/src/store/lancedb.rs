@@ -4,7 +4,7 @@ use arrow::array::{StringBuilder, UInt64Builder};
 use arrow_array::{Array, ArrayRef, Float32Array, RecordBatch, RecordBatchIterator, RecordBatchReader, StructArray};
 use arrow_schema::{DataType, Field, Schema};
 use futures::stream::StreamExt;
-use lancedb::{Connection, DistanceType, Table, connect, database::CreateTableMode, index::{Index, scalar::{FtsQuery, FullTextSearchQuery, MultiMatchQuery}}, query::{ExecutableQuery, Query, QueryBase, QueryExecutionOptions, VectorQuery}, rerankers::{Reranker, rrf::RRFReranker}, table::OptimizeAction};
+use lancedb::{Connection, DistanceType, Table, connect, database::CreateTableMode, index::{Index, scalar::{FtsQuery, FullTextSearchQuery, MultiMatchQuery, Operator}, vector::IvfPqIndexBuilder}, query::{ExecutableQuery, Query, QueryBase, QueryExecutionOptions, VectorQuery}, rerankers::{Reranker, rrf::RRFReranker}, table::OptimizeAction};
 use log::info;
 use serde::Serialize;
 
@@ -65,16 +65,6 @@ pub struct LanceDBStore<D: ArrowData> {
     _phantom_data: PhantomData<D>,
 }
 
-// development function to clear all the data from a given directory with LanceDB data inside
-pub async fn drop(data_dir: &str, table_name: &str) -> Result<(), LanceDBError> {
-    let db = connect(data_dir)
-        .execute().await
-        .map_err(LanceDBError::Connection)?;
-    db.drop_table(table_name).await
-        .map_err(|e| LanceDBError::TableOperation { operation: "Dropping table", source: e })?;
-    Ok(())
-}
-
 impl<D: ArrowData> LanceDBStore<D> {
     pub async fn local(data_dir: &str, table_name: String) -> Result<LanceDBStore<D>, LanceDBError> {
         let extended_schema = D::schema();
@@ -107,21 +97,10 @@ impl<D: ArrowData> LanceDBStore<D> {
             _phantom_data: Default::default(),
         })
     }
-    
-    // development function to clear all the data from an instantiated LanceDBStore
-    pub async fn clear_all(&mut self) -> Result<(), LanceDBError> {
-        self.db.drop_table(self.table_name.clone()).await
-            .map_err(|e| LanceDBError::TableOperation { operation: "Dropping all tables", source: e })?;
-        self.table = self.db.create_empty_table(self.table_name.clone(), self.schema.clone())
-            .mode(CreateTableMode::ExistOk(Box::new(|r| r)))
-            .execute().await
-            .map_err(|e| LanceDBError::TableOperation { operation: "Creating table", source: e })?;
-        Ok(())
-    }
 
     pub async fn merge_insert(&self, reader: impl RecordBatchReader + Send + 'static) -> Result<(), LanceDBError> {
         let mut merge = self.table.merge_insert(&[KEY_COLUMN]);
-        merge.when_matched_update_all(Some(format!("target.{SEQUENCE_NUMBER_COLUMN} < \
+        merge.when_matched_update_all(Some(format!("target.{SEQUENCE_NUMBER_COLUMN} <= \
             source.{SEQUENCE_NUMBER_COLUMN}"))).when_not_matched_insert_all();
 
         merge.execute(Box::new(reader)).await
@@ -165,13 +144,58 @@ impl<D: ArrowData> LanceDBStore<D> {
 
     /// Creates index on key column, allowing for key based retrievals
     async fn create_key_index(table: &Table) -> Result<(), LanceDBError> {
-        info!("Table {}: Creating key index", table.name());
+        info!("Table {}: Ensuring key index", table.name());
 
-        table.create_index(&[KEY_COLUMN], Index::BTree(Default::default()))
+        Self::ensure_index(
+            table,
+            KEY_COLUMN,
+            default_index_name(KEY_COLUMN),
+            Index::BTree(Default::default())
+        ).await
+    }
+
+    async fn ensure_index(
+        table: &Table,
+        column_name: &str,
+        index_name: String,
+        index: Index
+    ) -> Result<(), LanceDBError> {
+        let indices = table.list_indices().await
+            .map_err(|e| LanceDBError::TableOperation {
+                operation: "Listing indices",
+                source: e,
+            })?;
+        
+        for config in indices {
+            if config.name == index_name {
+                if config.columns.len() > 1 {
+                    return Err(LanceDBError::InvalidParameter {
+                        parameter: "Current index",
+                        issue: "Multiple columns",
+                        source: Some(anyhow::Error::msg(format!(
+                            "Currently existing lancedb index {} has multiple columns it is indexing: {:?}",
+                            config.name,
+                            config.columns,
+                        ))),
+                    });
+                }
+                let existing_column_name = config.columns.first()
+                    .expect("LanceDB indexes should have at least one column");
+                if existing_column_name == column_name { // AND index type does not match, but that is a TODO
+                    // index already exists
+                    return Ok(());
+                }
+            }
+        }
+
+        table.create_index(&[column_name], index)
+            .replace(true)
+            .name(index_name)
+            .train(true)
             .execute()
             .await
             .map_err(|e| LanceDBError::TableOperation {
-                operation: "Creating key index",
+                operation: "Creating and/or replacing index",
                 source: e
             })?;
 
@@ -269,7 +293,21 @@ impl<D: ArrowData + VectorData> LanceDBStore<D> {
             source: Some(e.into()),
         })?;
 
-        Self::local(data_dir, table_name).await
+        let store = Self::local(data_dir, table_name).await?;
+        // store.create_vector_indexes().await?;
+        Ok(store)
+    }
+
+    async fn create_vector_indexes(&self) -> Result<(), LanceDBError> {
+        let column_name = D::attribute_to_column_name(D::vector_attribute());
+
+        info!("Table {}: Ensuring vector index on column: {}", self.table_name, column_name);
+        Self::ensure_index(
+            &self.table,
+            column_name,
+            default_index_name(column_name),
+            Index::IvfPq(IvfPqIndexBuilder::default().distance_type(DistanceType::Cosine)),
+        ).await
     }
 }
 
@@ -282,13 +320,6 @@ impl<D: ArrowData + Filterable> LanceDBStore<D> {
         Ok(store)
     }
 
-    /// Clears all data and recreates the table with indexes.
-    pub async fn clear_all_with_filters(&mut self) -> Result<(), LanceDBError> {
-        self.clear_all().await?;
-        self.create_filter_indexes().await?;
-        Ok(())
-    }
-
     /// Creates indexes on all filterable attributes.
     async fn create_filter_indexes(&self) -> Result<(), LanceDBError> {
         let attribute_names = D::filterable_attributes();
@@ -297,16 +328,15 @@ impl<D: ArrowData + Filterable> LanceDBStore<D> {
             .collect();
 
         if !column_names.is_empty() {
-            info!("Table {}: Creating filter indexes on columns: {:?}", self.table_name, column_names);
+            info!("Table {}: Ensuring filter indexes on columns: {:?}", self.table_name, column_names);
 
             for column_name in column_names {
-                self.table.create_index(&[column_name], Index::BTree(Default::default()))
-                    .execute()
-                    .await
-                    .map_err(|e| LanceDBError::TableOperation {
-                        operation: "Creating filter indexes",
-                        source: e
-                    })?;
+                Self::ensure_index(
+                    &self.table,
+                    column_name,
+                    default_filter_index_name(column_name),
+                    Index::BTree(Default::default()),
+                ).await?;
             }
         }
 
@@ -323,13 +353,6 @@ impl<D: ArrowData + FTSData> LanceDBStore<D> {
         Ok(store)
     }
 
-    /// Clears all data and recreates the table with FTS indexes.
-    pub async fn clear_all_with_fts(&mut self) -> Result<(), LanceDBError> {
-        self.clear_all().await?;
-        self.create_fts_indexes().await?;
-        Ok(())
-    }
-
     /// Creates FTS indexes on all FTS attributes.
     async fn create_fts_indexes(&self) -> Result<(), LanceDBError> {
         let attribute_names = D::fts_attributes();
@@ -338,16 +361,15 @@ impl<D: ArrowData + FTSData> LanceDBStore<D> {
             .collect();
 
         if !column_names.is_empty() {
-            info!("Table {}: Creating FTS indexes on columns: {:?}", self.table_name, column_names);
+            info!("Table {}: Ensuring FTS indexes on columns: {:?}", self.table_name, column_names);
 
             for column_name in column_names {
-                self.table.create_index(&[column_name], Index::FTS(Default::default()))
-                    .execute()
-                    .await
-                    .map_err(|e| LanceDBError::TableOperation {
-                        operation: "Creating FTS indexes",
-                        source: e
-                    })?;
+                Self::ensure_index(
+                    &self.table,
+                    column_name,
+                    default_fts_index_name(column_name),
+                    Index::FTS(Default::default()),
+                ).await?;
             }
         }
 
@@ -363,14 +385,6 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> LanceDBStore<D> {
         store.create_filter_indexes().await?;
         store.create_fts_indexes().await?;
         Ok(store)
-    }
-
-    /// Clears all data and recreates the table with all indexes.
-    pub async fn clear_all_full(&mut self) -> Result<(), LanceDBError> {
-        self.clear_all().await?;
-        self.create_filter_indexes().await?;
-        self.create_fts_indexes().await?;
-        Ok(())
     }
 }
 
@@ -474,24 +488,28 @@ impl<D: ArrowData + VectorData> QueryByVector<D> for LanceDBStore<D> {
 
 // QueryFull implementation - only available when D: VectorData + Filterable + FTSData
 impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBStore<D> {
-    fn query_full<'a>(&self, vector: Vec<f32>, fts_terms: Option<&str>, filters: &[Filter<'a>]) ->
+    fn query_full<'a>(&self, vector: Option<Vec<f32>>, fts_terms: Option<&str>, filters: &[Filter<'a>]) ->
         impl Future<Output = Result<Vec<FullQueryResult<D>>, anyhow::Error>> {
         self.query_full_n(vector, fts_terms, filters, 0, 0)
     }
 
     async fn query_full_n<'a>(
         &self,
-        vector: Vec<f32>,
+        vector: Option<Vec<f32>>,
         fts_terms: Option<&str>,
         filters: &[Filter<'a>],
         num_results: u32,
         offset: u32,
     ) -> Result<Vec<FullQueryResult<D>>, anyhow::Error> {
+        let is_fts = fts_terms.is_some();
+        let is_vector = vector.is_some();
+        let is_hybrid = is_fts && is_vector;
+
         let mut query = self.table.query();
 
         // Apply FTS
-        if let Some(fts) = fts_terms {
-            query = apply_fts::<D, _>(query, fts)?;
+        if is_fts {
+            query = apply_fts::<D, _>(query, fts_terms.unwrap())?;
         }
 
         // Apply filters
@@ -501,12 +519,19 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
         // Apply pagination
         query = apply_pagination(query, num_results, offset);
 
-        // Apply vector search
-        let query = apply_vector_search::<D>(query, vector)?;
-
         // Execute hybrid search
-        let mut result_stream = query.execute_hybrid(QueryExecutionOptions::default()).await
-            .map_err(|e| VectorStoreError::Query { source: e.into() })?;
+        let mut result_stream = if is_vector {
+            // Apply vector search
+            let query = apply_vector_search::<D>(query, vector.unwrap())?;
+            if is_hybrid {
+                query.execute_hybrid(QueryExecutionOptions::default()).await
+                    .map_err(|e| VectorStoreError::Query { source: e.into() })?
+            } else {
+                query.execute().await.map_err(|e| VectorStoreError::Query { source: e.into() })?
+            }
+        } else {
+            query.execute().await.map_err(|e| VectorStoreError::Query { source: e.into() })?
+        };
 
         let mut result_list: Vec<FullQueryResult<D>> = Vec::new();
         while let Some(rb) = result_stream.next().await {
@@ -520,23 +545,56 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
                         // result before they try pulling their non-existent columns out of the batch.
                         break;
                     }
-                    let relevance_column = batch.column_by_name("_relevance_score")
-                        .expect("_relevance_score column should exist in hybrid query")
-                        .as_any().downcast_ref::<Float32Array>()
-                        .expect("Returned query result of relevance scores could not be converted to a f32")
-                        .iter().map(|s| s.expect("Missing f32 in optional for non-nullable relevance score column"))
-                        .collect::<Vec<f32>>();
+
+                    let mut score_iter: Box<dyn Iterator<Item = f32>> = if is_hybrid {
+                        // If this is a hybrid query, our scoring metric is already precalculated for us
+                        // by the built-in reranker so we can just return the _relevance_score column directly
+                        let relevance_column = batch.column_by_name("_relevance_score")
+                            .expect("_relevance_score column should exist in hybrid query")
+                            .as_any().downcast_ref::<Float32Array>()
+                            .expect("Returned query result of relevance scores could not be converted to a f32")
+                            .iter().map(|s| s.expect("Missing f32 in optional for non-nullable relevance score column"))
+                            .collect::<Vec<f32>>();
+
+                        Box::new(relevance_column.into_iter())
+                    } else if is_fts {
+                        // If this is an fts query, our scores are also calculated for us and built-in
+                        // to the query in the _score column.
+                        let score_column = batch.column_by_name("_score")
+                            .expect("_score column should exist in fts query")
+                            .as_any().downcast_ref::<Float32Array>()
+                            .expect("Returned query result of scores could not be converted to a f32")
+                            .iter().map(|s| s.expect("Missing f32 in optional for non-nullable score column"))
+                            .collect::<Vec<f32>>();
+
+                        Box::new(score_column.into_iter())
+                    } else if is_vector {
+                        // if this is not a hybrid query, we only have the _distance column so we must calculate
+                        // the score ourselves. cosine distances will range from 0.0 -> 2.0, the lower the better
+                        let distance_column = batch.column_by_name("_distance")
+                            .expect("_distance column should exist in vector query")
+                            .as_any().downcast_ref::<Float32Array>()
+                            .expect("Returned query result of distances could not be converted to a f32")
+                            .iter().map(|s| s.expect("Missing f32 in optional for non-nullable distance column"))
+                            .collect::<Vec<f32>>();
+
+                        Box::new(distance_column.into_iter().map(|dist| {
+                            1.0 - dist
+                        }))
+                    } else {
+                        // This is a normal query or filter query, and therefore will not have scores
+                        Box::new(vec![0.0; batch.num_rows()].into_iter())
+                    };
 
                     let mut data_iter = D::batch_to_iter(batch).into_iter();
-                    let mut relevance_iter = relevance_column.into_iter();
 
-                    while let (Some(data), Some(score)) = (data_iter.next(), relevance_iter.next()) {
+                    while let (Some(data), Some(score)) = (data_iter.next(), score_iter.next()) {
                         result_list.push(FullQueryResult {
                             result: data,
                             score,
                         })
                     }
-                    if data_iter.next().is_some() || relevance_iter.next().is_some() {
+                    if data_iter.next().is_some() || score_iter.next().is_some() {
                         // TODO: probably better to return error here
                         panic!("columns in query result should not have different lengths!");
                     }
@@ -668,7 +726,7 @@ fn apply_fts<D: ArrowData + FTSData, Q: QueryBase>(mut query: Q, fts_terms: &str
                 MultiMatchQuery::try_new(
                     fts_terms.to_string(),
                     fts_columns
-                )?
+                )?.with_operator(Operator::And)
             )
         );
 
@@ -677,4 +735,16 @@ fn apply_fts<D: ArrowData + FTSData, Q: QueryBase>(mut query: Q, fts_terms: &str
     }
 
     Ok(query)
+}
+
+fn default_filter_index_name(column_name: &str) -> String {
+    default_index_name(column_name) + "_filter"
+}
+
+fn default_fts_index_name(column_name: &str) -> String {
+    default_index_name(column_name) + "_fts"
+}
+
+fn default_index_name(column_name: &str) -> String {
+    column_name.to_owned() + "_idx"
 }

@@ -232,6 +232,10 @@ async fn spawn_index_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
                     bar_clone.println(format!("File {path} successfully indexed"));
                     Ok(())
                 },
+                Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Skipped { reason } }) => {
+                    bar_clone.println(format!("File {path} was skipped for reason: {reason}"));
+                    Ok(())
+                },
                 Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => {
                     bar_clone.println(format!("File {path} not found or could not be previewed, successfully cleared from index"));
                     Ok(())
@@ -296,6 +300,9 @@ async fn spawn_clear_jobs(file_indexer: Arc<impl IndexFiles + Sync + Send + Clon
             match result {
                 Ok(FileIndexingResult { path: _, r#type: FileIndexingResultType::Indexed }) => {
                     unreachable!("Clear will never return an Indexed result");
+                },
+                Ok(FileIndexingResult { path: _, r#type: FileIndexingResultType::Skipped { .. } }) => {
+                    unreachable!("Clear will never return an Skipped result");
                 },
                 Ok(FileIndexingResult { path, r#type: FileIndexingResultType::Cleared  }) => {
                     bar_clone.println(format!("Path {path} successfully cleared from index"));

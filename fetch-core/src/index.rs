@@ -4,6 +4,8 @@ use serde_json::{Map, Value};
 
 use crate::store::KeyedSequencedData;
 
+// TODO: update sequence number to separate value from file modified date - chunkfile creation date?
+// Will require complete regeneration of database
 pub struct ChunkFile {
     // Composite key
     pub original_file: Utf8PathBuf,

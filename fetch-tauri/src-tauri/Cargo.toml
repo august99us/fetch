@@ -1,6 +1,6 @@
 [package]
 name = "fetch"
-version = "0.0.2"
+version.workspace = true
 description = "Fetch"
 authors = ["august99us"]
 edition = "2021"
@@ -20,6 +20,7 @@ qnn = ["fetch-core/qnn"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = { workspace = true }
 
 [dependencies]
 fetch-core = { path = "../../fetch-core" }

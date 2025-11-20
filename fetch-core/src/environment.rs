@@ -1,6 +1,9 @@
+use std::sync::OnceLock;
+
 use camino::{Utf8Path, Utf8PathBuf};
-use log::{error, info};
+use log::{debug, error, info};
 use ort::execution_providers::*;
+use pdfium_render::prelude::Pdfium;
 
 use crate::index::embedding::{embeddinggemma, sessions::init_model_resource_directory, siglip2};
 
@@ -12,8 +15,6 @@ pub fn init_resources(path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
 
     #[cfg(feature = "pdf")]
     {
-        use crate::index::provider::pdf::PDFIUM_LIB_PATH;
-
         info!("Initializing PDFium...");
         PDFIUM_LIB_PATH.set(resource_path.to_owned())
             .map_err(|_| anyhow::anyhow!("PDFium library path has already been set"))?;
@@ -108,4 +109,20 @@ fn init_ort(onnx_lib_path: Option<&Utf8Path>) -> Result<(), anyhow::Error> {
             Err(e.into())
         }
     }
+}
+
+// crate-wide environment and utilities
+
+#[cfg(feature = "pdf")]
+pub(crate) static PDFIUM_LIB_PATH: OnceLock<Utf8PathBuf> = OnceLock::new();
+
+#[cfg(feature = "pdf")]
+pub(crate) fn get_pdfium() -> Pdfium {
+    let pdfium_lib_path = PDFIUM_LIB_PATH.get_or_init(|| Utf8PathBuf::from("./"));
+    debug!("Initializing PDFium from path: {}...", pdfium_lib_path);
+
+    let bindings = Pdfium::bind_to_library(
+        Pdfium::pdfium_platform_library_name_at_path(pdfium_lib_path)
+    ).expect("Failed to bind PDFium to provided library");
+    Pdfium::new(bindings)
 }
