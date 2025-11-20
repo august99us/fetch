@@ -556,6 +556,7 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
                             .iter().map(|s| s.expect("Missing f32 in optional for non-nullable relevance score column"))
                             .collect::<Vec<f32>>();
 
+                        // TODO: Scale these to 0.0 - 1.0
                         Box::new(relevance_column.into_iter())
                     } else if is_fts {
                         // If this is an fts query, our scores are also calculated for us and built-in
@@ -567,6 +568,7 @@ impl<D: ArrowData + VectorData + Filterable + FTSData> QueryFull<D> for LanceDBS
                             .iter().map(|s| s.expect("Missing f32 in optional for non-nullable score column"))
                             .collect::<Vec<f32>>();
 
+                        // TODO: Scale these to 0.0 - 1.0
                         Box::new(score_column.into_iter())
                     } else if is_vector {
                         // if this is not a hybrid query, we only have the _distance column so we must calculate

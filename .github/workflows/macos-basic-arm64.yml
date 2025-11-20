@@ -1,4 +1,4 @@
-name: macOS GUI Basic (Universal)
+name: macOS GUI Basic (Apple Silicon)
 
 on:
   workflow_dispatch:
@@ -22,18 +22,16 @@ jobs:
     - name: Install Protoc
       uses: arduino/setup-protoc@v3
 
-    - name: Install Rust targets for universal binary
-      run: |
-        rustup target add x86_64-apple-darwin
-        rustup target add aarch64-apple-darwin
+    - name: Install Rust target for Apple Silicon
+      run: rustup target add aarch64-apple-darwin
 
-    - name: Download ONNX Runtime (CPU - Universal)
+    - name: Download ONNX Runtime (CPU - ARM64)
       run: |
         echo "Fetching latest ONNX Runtime version..."
         VERSION=$(curl -s https://api.github.com/repos/microsoft/onnxruntime/releases/latest | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
         echo "Latest version: $VERSION"
 
-        URL="https://github.com/microsoft/onnxruntime/releases/download/v${VERSION}/onnxruntime-osx-universal2-${VERSION}.tgz"
+        URL="https://github.com/microsoft/onnxruntime/releases/download/v${VERSION}/onnxruntime-osx-arm64-${VERSION}.tgz"
         echo "Downloading ONNX Runtime from $URL"
         curl -L -o onnxruntime.tgz "$URL"
 
@@ -107,14 +105,14 @@ jobs:
       working-directory: fetch-tauri
       run: npm install
 
-    - name: Build Tauri application (Basic - Universal)
+    - name: Build Tauri application (Basic - Apple Silicon)
       working-directory: fetch-tauri
-      run: npm run tauri build -- --target universal-apple-darwin
+      run: npm run tauri build -- --target aarch64-apple-darwin
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: fetch-macos-basic-universal
+        name: fetch-macos-basic-arm64
         path: |
-          target/universal-apple-darwin/release/bundle/
+          target/aarch64-apple-darwin/release/bundle/
         retention-days: 7

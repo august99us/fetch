@@ -1,4 +1,4 @@
-use std::{future::Future, hash::{DefaultHasher, Hash, Hasher}};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use async_trait::async_trait;
 use camino::{Utf8Path, Utf8PathBuf};

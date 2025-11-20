@@ -135,7 +135,8 @@ pub trait QueryFull<D: VectorData + Filterable + FTSData> {
 
 pub struct FullQueryResult<D: VectorData + Filterable + FTSData> {
     pub result: D,
-    /// Descending relevancy score from combined query factors. higher = better
+    /// Descending relevancy score from combined query factors.
+    /// 0.0 - 1.0, higher = better
     /// If there is no vector or fts field, then these will always be 0.0
     pub score: f32,
 }
