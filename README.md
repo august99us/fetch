@@ -1,18 +1,18 @@
 # Fetch
 
-A file search application that utilizes locally generated semantic vector embeddings to supplement searches with the actual content of the files themselves.
+A file search application that utilizes locally generated semantic vector embeddings to supplement searches with the actual content of the files themselves. Use AI to search through your files, completely and purely on your personal machine!
 
 ## Quick Start
 
-To get started with Fetch, download the appropriate installer for your operating system in the latest release on the right and run. The installer will guide you through the necessary steps.
+To get started with Fetch, download the appropriate installer for your operating system in the [latest release](https://github.com/august99us/fetch/releases/latest) on the right and run. The installer will guide you through the necessary steps.
 
 Index some data using the index pane in the GUI. Note: If you want to index a very large folder, currently it will likely be better if you use the [CLI](#cli), it is more stable.
 
-(GIF)
+![Indexing](repo-assets/indexing.gif)
 
 Then get to searching!
 
-(GIF)
+![Querying](repo-assets/querying.gif)
 
 Press Ctrl(or Cmd)+Shift+Space to search quickly from anywhere.
 

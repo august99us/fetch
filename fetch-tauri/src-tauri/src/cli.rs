@@ -46,6 +46,9 @@ pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
                             paths,
                         };
 
+                        #[cfg(windows)]
+                        alloc_attach_console();
+
                         fetch_cli::index::index(args).await?;
                     },
                     "query" => {
@@ -75,6 +78,9 @@ pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
                             chunks_per_query,
                         };
 
+                        #[cfg(windows)]
+                        alloc_attach_console();
+
                         fetch_cli::query::query(args).await?;
                     },
                     "query-by-file" => {
@@ -95,6 +101,9 @@ pub fn intercept_cli_command(app_handle: &AppHandle) -> bool {
                             query,
                             num_results,
                         };
+
+                        #[cfg(windows)]
+                        alloc_attach_console();
 
                         fetch_cli::query_by_file::query_by_file(args).await?;
                     },
@@ -124,4 +133,10 @@ fn check_help_and_maybe_exit(app_handle: &AppHandle, args: &HashMap<String, ArgD
         println!("{}", message.value.as_str().unwrap());
         app_handle.exit(0);
     }
+}
+
+#[cfg(windows)]
+fn alloc_attach_console() {
+    use windows::Win32::System::Console::AllocConsole;
+    let _ = unsafe { AllocConsole() };
 }
