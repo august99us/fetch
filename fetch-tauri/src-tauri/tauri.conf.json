@@ -37,6 +37,9 @@
       "msi",
       "dmg"
     ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "windows": {
       "wix": {
         "componentRefs": [
