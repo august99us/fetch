@@ -148,5 +148,5 @@ jobs:
       with:
         name: fetch-macos-basic-arm64
         path: |
-          target/aarch64-apple-darwin/release/bundle/
+          target/aarch64-apple-darwin/release/bundle/dmg/
         retention-days: 7
