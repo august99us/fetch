@@ -2,6 +2,8 @@
 
 A file search application that utilizes locally generated semantic vector embeddings to supplement searches with the actual content of the files themselves. Use AI to search through your files, completely and purely on your personal machine!
 
+If this application was useful or interesting to you, please consider giving it a star! ⭐
+
 ## Quick Start
 
 To get started with Fetch, download the appropriate installer for your operating system in the [latest release](https://github.com/august99us/fetch/releases/latest) on the right and run. The installer will guide you through the necessary steps.

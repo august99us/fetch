@@ -35,11 +35,8 @@
     },
     "targets": [
       "msi",
-      "dmg"
+      "app"
     ],
-    "macOS": {
-      "signingIdentity": "-"
-    },
     "windows": {
       "wix": {
         "componentRefs": [

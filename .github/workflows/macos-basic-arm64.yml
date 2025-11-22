@@ -109,6 +109,40 @@ jobs:
       working-directory: fetch-tauri
       run: npm run tauri build -- --target aarch64-apple-darwin
 
+    - name: Re-sign application bundle with sealed resources
+      run: |
+        echo "Re-signing application to properly seal resources..."
+        codesign --force --deep --sign - "target/aarch64-apple-darwin/release/bundle/macos/fetch.app"
+
+        echo "Verifying signature..."
+        codesign -vv "target/aarch64-apple-darwin/release/bundle/macos/fetch.app"
+
+        echo "Checking sealed resources..."
+        codesign -dv --verbose=4 "target/aarch64-apple-darwin/release/bundle/macos/fetch.app"
+
+    - name: Create DMG
+      run: |
+        echo "Creating DMG from signed app bundle..."
+        mkdir -p target/aarch64-apple-darwin/release/bundle/dmg
+
+        # Create a temporary directory for DMG contents
+        mkdir -p dmg-temp
+        cp -R "target/aarch64-apple-darwin/release/bundle/macos/fetch.app" dmg-temp/
+
+        # Create symlink to Applications folder
+        ln -s /Applications dmg-temp/Applications
+
+        # Create the DMG
+        hdiutil create -volname "fetch" \
+          -srcfolder dmg-temp \
+          -ov -format UDZO \
+          "target/aarch64-apple-darwin/release/bundle/dmg/fetch_0.0.3_aarch64.dmg"
+
+        # Clean up
+        rm -rf dmg-temp
+
+        echo "DMG created successfully"
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
